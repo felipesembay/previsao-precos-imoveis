@@ -35,3 +35,6 @@ logs/
 data/raw/quintoandar/
 data/interim/aluguel_*.parquet
 notebooks/aluguel/cache_geocoding_sp.csv
+
+# MLflow (runs e modelos ficam só local)
+mlruns/

@@ -39,6 +39,53 @@ CATS_POI = [
 
 TARGET = "log_rent"
 
+# ============================================================
+# 0. Modelo de produção (mesmo padrão de compra/ML3 e do notebook 06)
+# ============================================================
+
+# Localização entra só via geocoding (lat/lon -> POIs e distâncias), como no projeto de compra
+NUM_FEATURES = [
+    "bedrooms", "bathrooms", "parkingSpaces", "area", "suites",
+    "score_escola_privada", "score_escola_publica",
+    "score_hospitais", "score_mercado",
+    "score_farmacia", "score_parque", "score_seguranca", "score_metro",
+    "mobiliado", "am_ar_condicionado", "inst_piscina", "inst_academia", "am_varanda",
+    "dist_centro_km", "dist_polo_km",
+]
+CAT_FEATURES = ["tipo_imovel_cat"]
+
+MAPA_TIPO = {
+    "Apartamento": "apartamento",
+    "StudioOuKitchenette": "studio",
+    "Casa": "casa",
+    "CasaCondominio": "casa_condominio",
+}
+
+
+def add_poi_scores(df: pd.DataFrame) -> pd.DataFrame:
+    """Scores de proximidade: mesma fórmula do projeto de compra (src/features/pipeline.py)."""
+    df = df.copy()
+    df["score_escola_privada"] = 1.2 * np.exp(-df["dist_escola_privada"] / 600) + 0.6 * df["qtd_escola_privada_500m"]
+    df["score_escola_publica"] = 0.6 * np.exp(-df["dist_escola_publica"] / 600) + 0.2 * df["qtd_escola_publica_500m"]
+    df["score_hospitais"] = 0.8 * np.exp(-df["dist_hospital"] / 1200) + 0.4 * df["qtd_hospital_1km"]
+    df["score_mercado"] = 1.0 * np.exp(-df["dist_supermercado"] / 400) + 0.4 * df["qtd_supermercado_500m"]
+    # contagem em 300 m não existe na base do aluguel -> usa 500 m
+    df["score_farmacia"] = 0.6 * np.exp(-df["dist_farmacia"] / 300) + 0.2 * df["qtd_farmacia_500m"]
+    df["score_parque"] = 1.2 * np.exp(-df["dist_parque"] / 1200) + 0.8 * df["qtd_parque_1km"]
+    df["score_seguranca"] = 1.0 * np.exp(-df["dist_policia"] / 1500) + 0.3 * df["qtd_policia_500m"]
+    df["score_educacao"] = df["score_escola_privada"] - 0.2 * df["score_escola_publica"]
+    df["score_metro"] = 1.0 * np.exp(-df["dist_metro"] / 800) + 0.3 * df["qtd_metro_1km"]
+    return df
+
+
+def prepare_dataset(path) -> pd.DataFrame:
+    """Lê aluguel_sp_features.parquet (notebook 05) e devolve o DataFrame pronto para treinar."""
+    df = pd.read_parquet(path)
+    df = add_poi_scores(df)
+    df["tipo_imovel_cat"] = df["type"].map(MAPA_TIPO)
+    df[TARGET] = np.log(df["rent"].clip(lower=1))
+    return df
+
 
 # ============================================================
 # 1. Features determinísticas (linha a linha)
