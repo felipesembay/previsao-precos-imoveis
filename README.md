@@ -238,7 +238,7 @@ Acesse em: [http://localhost:5000](http://localhost:5000)
 Para treinar e registrar um novo modelo:
 
 ```bash
-python src/train.py
+python src/models/train.py
 ```
 
 ---

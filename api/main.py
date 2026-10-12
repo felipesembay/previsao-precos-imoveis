@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT_DIR)
 
-from src.predict import load_model, predict
+from src.models.predict import load_model, predict
 
 # ============================================================
 # Schema de entrada / saída
@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI):
         print("✅ Modelo carregado com sucesso!")
     except Exception as e:
         print(f"⚠️  Erro ao carregar modelo do registry: {e}")
-        print("   A API vai iniciar sem modelo. Treine primeiro com: python -m src.train")
+        print("   A API vai iniciar sem modelo. Treine primeiro com: python -m src.models.train")
 
     yield  # App rodando
 
@@ -154,7 +154,7 @@ def predict_price(imovel: ImovelInput):
     if _model is None:
         raise HTTPException(
             status_code=503,
-            detail="Modelo não carregado. Treine primeiro com: python -m src.train",
+            detail="Modelo não carregado. Treine primeiro com: python -m src.models.train",
         )
 
     try:

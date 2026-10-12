@@ -1,0 +1,13 @@
+hipótese,pergunta,teste,estatística,p,efeito,conclusão
+H7,Variáveis de planta são colineares?,VIF,VIF máx = 5.1,—,bathrooms = 5.1,Colinearidade moderada
+H1,Aluguel cresce menos que proporcionalmente à área?,"OLS log-log + FE região, t-test β=1",β = 0.64 [0.61; 0.67],"< 0,001",+10% área → +6.3% aluguel,Rejeita H0: elasticidade < 1
+H4,Tipo muda o aluguel na mesma área e região?,"OLS + FE região, Wald conjunto",χ² = 302.4,"< 0,001",Casa -22%; CasaCondominio -8%; Studio +8%,Rejeita H0: tipo tem efeito próprio
+H2,R$/m² difere entre regiões?,Kruskal-Wallis,"H = 8,532","< 0,001",ε² = 0.42 (grande),Rejeita H0: regiões diferem
+H9,Efeito da distância ao centro é não linear?,F aninhado linear × spline,F = 226.0,"< 0,001",pico em ~4.1 km; ΔAIC = 879,Rejeita H0: não linear
+H3,Mobiliado aumenta o aluguel (mesma planta e região)?,OLS modelo completo + FE região (cluster),+14.3% [+12.6%; +15.9%],"< 0,001",ingênuo +42% → controlado +14.3%,Efeito controlado relevante
+H5,Aceitar pet altera o aluguel?,OLS modelo completo + FE região (cluster),+1.0% [-0.1%; +2.2%],0.066,ingênuo +20% → controlado +1.0%,Sem efeito controlado
+H6,Piscina mantém efeito após controles?,OLS modelo completo + FE região (cluster),+7.9% [+6.2%; +9.5%],"< 0,001",ingênuo +41% → controlado +7.9%,Efeito controlado relevante
+H8,Perto de metrô/trem aumenta o aluguel?,OLS modelo completo + FE região (cluster),+8.3% [+4.8%; +11.9%],"< 0,001",ingênuo +11% → controlado +8.3%,Efeito controlado relevante
+H10,Efeito da mobília depende do tipo?,"OLS com interação, Wald",χ² = 9.6,0.022,Apartamento +22%; Casa +15%; Studio +23%; CasaCondominio +12%,Rejeita H0: efeito varia por tipo
+H11,Regiões caras têm mais studios?,Spearman + WLS (controle: distância),ρ = 0.74,"< 0,001",+10 R$/m² na região → +4.5 p.p. de studios,Rejeita H0: associação positiva
+—,Resíduos têm estrutura espacial?,corr. resíduo × vizinhos (k=10),0.33 com FE região,—,0.54 sem região → 0.33 com região,Ainda há sinal espacial

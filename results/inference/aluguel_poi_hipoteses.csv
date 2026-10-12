@@ -1,0 +1,12 @@
+hipótese,pergunta,teste,estatística,p,efeito,conclusão
+—,POIs são colineares entre si?,VIF,VIF máx = 4.6,—,bathrooms = 4.6,Colinearidade baixa/moderada
+P1,Perto de escola pública reduz o aluguel?,"OLS conjunto + FE região (cluster, Holm)",-1.8% [-3.6%; -0.1%],0.395,ingênuo -13.1% → controlado -1.8%,Efeito some ao controlar a região
+P2,Perto de escola privada aumenta o aluguel?,"OLS conjunto + FE região (cluster, Holm)",-0.6% [-2.7%; +1.5%],0.872,ingênuo +14.1% → controlado -0.6%,Efeito some ao controlar a região
+P3,Mix escolar mede renda do entorno?,OLS + FE região (cluster),+0.98% por +10 p.p.,0.004,ingênuo +6.2% → controlado +0.98% por +10 p.p.,Associação forte entre regiões; persiste dentro da região
+P4,Prêmio do metrô decai com a distância?,OLS faixas + FE região (cluster),0–300 m: +18.8%,"< 0,001","metrô 0–300 +18.8% → 1–1,5k +8.3%; trem 300–600 +13.8%",Gradiente confirmado
+P5,Colado ao trem (< 300 m) tem desconto?,OLS faixas + FE região (cluster),+6.1% [-2.1%; +15.0%],0.146,0–300 m +6.1% vs. 300–600 m +13.8%,Sem evidência de desconto
+—,Metrô vale mais na periferia?,OLS com interação + FE região,p (interação) = 0.966,0.966,centro +6.5%; periferia +6.6%,Sem diferença detectável
+P8,POIs substituem a região na previsão?,CV aleatória e espacial (OLS),R² espacial: B 0.793 × C 0.745,—,"MAE espacial: B R$ 1,109 × C R$ 1,203; D R$ 1,114",POIs generalizam melhor que região
+P9,POIs reduzem a autocorrelação espacial?,corr. resíduo × 10 vizinhos,C 0.34 → D 0.29,—,A 0.56; B 0.44; C 0.34; D 0.29,"Reduzem, mas não eliminam"
+P6,Comércio e saúde perdem o efeito ao controlar a região?,Cascata + OLS conjunto (Holm),farmacia +1.2%; supermercado +1.2%; hospital +0.9%,0.754,farmacia: +25% → +1.2%; supermercado: +20% → +1.2%; hospital: +19% → +0.9%,"Sim, efeito some/encolhe"
+P7,Parque grande valoriza dentro da região?,Cascata + OLS conjunto (Holm),parque +2.1%,0.488,parque: +12% → +2.1%,Parcialmente / não

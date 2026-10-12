@@ -28,3 +28,10 @@ __pycache__/
 streamlit_app/.env
 
 cache/
+
+# Logs
+logs/
+# Dados coletados por scraping (não republicar) e derivados
+data/raw/quintoandar/
+data/interim/aluguel_*.parquet
+notebooks/aluguel/cache_geocoding_sp.csv
