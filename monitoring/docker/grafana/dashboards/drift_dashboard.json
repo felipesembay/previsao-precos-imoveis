@@ -1,10 +1,22 @@
 {
   "__inputs": [],
   "__requires": [
-    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
-    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
   ],
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "description": "Monitoramento de Data Drift — Modelo de Precificação de Imóveis",
   "editable": true,
   "fiscalYearStartMonth": 0,
@@ -12,49 +24,96 @@
   "id": null,
   "links": [],
   "panels": [
-
     {
       "id": 1,
       "type": "stat",
       "title": "Dataset Drift Detectado",
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
       "options": {
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "value_and_name"
       },
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "options": { "0": { "color": "green", "text": "OK" }, "1": { "color": "red", "text": "DRIFT!" } }, "type": "value" }
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "text": "OK"
+                },
+                "1": {
+                  "color": "red",
+                  "text": "DRIFT!"
+                }
+              },
+              "type": "value"
+            }
           ],
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
         }
       },
       "targets": [
         {
-          "expr": "dataset_drift_detected",
+          "expr": "dataset_drift_detected{modelo=~\"$modelo\"}",
           "legendFormat": "{{modelo}} v{{versao}}",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 2,
       "type": "stat",
       "title": "Features com Drift (%)",
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
       "options": {
         "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "fieldConfig": {
@@ -63,34 +122,56 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.25 },
-              { "color": "red", "value": 0.5 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.25
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
             ]
           }
         }
       },
       "targets": [
         {
-          "expr": "share_drifted_columns",
+          "expr": "share_drifted_columns{modelo=~\"$modelo\"}",
           "legendFormat": "{{modelo}}",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 3,
       "type": "stat",
       "title": "Última Atualização",
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
       "options": {
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "fieldConfig": {
@@ -99,8 +180,14 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
             ]
           }
         }
@@ -112,20 +199,33 @@
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 10,
       "type": "bargauge",
       "title": "Drift Score por Feature (último valor)",
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 4 },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
       "options": {
         "displayMode": "gradient",
         "minVizHeight": 10,
         "minVizWidth": 0,
         "orientation": "horizontal",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "showUnfilled": true,
         "text": {}
       },
@@ -136,10 +236,22 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.10 },
-              { "color": "orange", "value": 0.20 },
-              { "color": "red", "value": 0.30 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "orange",
+                "value": 0.2
+              },
+              {
+                "color": "red",
+                "value": 0.3
+              }
             ]
           },
           "unit": "short",
@@ -148,223 +260,391 @@
       },
       "targets": [
         {
-          "expr": "feature_drift_score",
+          "expr": "feature_drift_score{modelo=~\"$modelo\"}",
           "legendFormat": "{{feature}}",
           "refId": "A",
           "instant": true
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 20,
       "type": "timeseries",
       "title": "Evolução do Drift Score por Feature",
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 4 },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "fieldConfig": {
         "defaults": {
           "min": 0,
           "max": 1,
-          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.10 },
-              { "color": "orange", "value": 0.20 },
-              { "color": "red", "value": 0.30 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "orange",
+                "value": 0.2
+              },
+              {
+                "color": "red",
+                "value": 0.3
+              }
             ]
           },
-          "color": { "mode": "palette-classic" }
+          "color": {
+            "mode": "palette-classic"
+          }
         }
       },
       "targets": [
         {
-          "expr": "feature_drift_score",
+          "expr": "feature_drift_score{modelo=~\"$modelo\"}",
           "legendFormat": "{{feature}}",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 30,
       "type": "timeseries",
       "title": "Dataset Drift ao Longo do Tempo",
-      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 14 },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       },
       "fieldConfig": {
         "defaults": {
           "min": 0,
           "max": 1,
           "mappings": [],
-          "custom": { "lineWidth": 2, "fillOpacity": 20 },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 20
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
             ]
           },
-          "color": { "mode": "thresholds" }
+          "color": {
+            "mode": "thresholds"
+          }
         }
       },
       "targets": [
         {
-          "expr": "dataset_drift_detected",
+          "expr": "dataset_drift_detected{modelo=~\"$modelo\"}",
           "legendFormat": "drift detectado",
           "refId": "A"
         },
         {
-          "expr": "share_drifted_columns",
+          "expr": "share_drifted_columns{modelo=~\"$modelo\"}",
           "legendFormat": "proporção features driftadas",
           "refId": "B"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 40,
       "type": "table",
       "title": "Ranking de Features com Maior Drift",
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 14 },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
       "options": {
-        "footer": { "show": false },
+        "footer": {
+          "show": false
+        },
         "showHeader": true,
-        "sortBy": [{ "desc": true, "displayName": "Value" }]
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Value"
+          }
+        ]
       },
       "fieldConfig": {
         "defaults": {
-          "custom": { "align": "auto", "filterable": false },
+          "custom": {
+            "align": "auto",
+            "filterable": false
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.2 },
-              { "color": "orange", "value": 0.3 },
-              { "color": "red", "value": 0.5 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.2
+              },
+              {
+                "color": "orange",
+                "value": 0.3
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
             ]
           },
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "decimals": 4
         },
         "overrides": []
       },
       "targets": [
         {
-          "expr": "topk(12, feature_drift_score)",
+          "expr": "topk(12, feature_drift_score{modelo=~\"$modelo\"})",
           "legendFormat": "{{feature}}",
           "refId": "A",
           "instant": true,
           "format": "table"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 50,
       "type": "timeseries",
       "title": "Comparação de Médias: Baseline vs Produção",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
       "description": "Compara a média das features entre dados de baseline e produção",
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "fieldConfig": {
         "defaults": {
-          "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "auto" },
-          "color": { "mode": "palette-classic" }
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "auto"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
         },
         "overrides": [
           {
-            "matcher": { "id": "byRegexp", "options": ".*baseline.*" },
-            "properties": [{ "id": "custom.lineStyle", "value": { "dash": [10, 5], "fill": "dash" }}]
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*baseline.*"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    5
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
           }
         ]
       },
       "targets": [
         {
-          "expr": "feature_distribution_mean{dataset_type=\"baseline\"}",
+          "expr": "feature_distribution_mean{modelo=~\"$modelo\",dataset_type=\"baseline\"}",
           "legendFormat": "{{feature}} (baseline)",
           "refId": "A",
           "interval": "",
           "step": 60
         },
         {
-          "expr": "feature_distribution_mean{dataset_type=\"production\"}",
+          "expr": "feature_distribution_mean{modelo=~\"$modelo\",dataset_type=\"production\"}",
           "legendFormat": "{{feature}} (produção)",
           "refId": "B",
           "interval": "",
           "step": 60
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 51,
       "type": "timeseries",
       "title": "Comparação de Desvio Padrão: Baseline vs Produção",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
       "description": "Compara o desvio padrão das features entre dados de baseline e produção",
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "fieldConfig": {
         "defaults": {
-          "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "auto" },
-          "color": { "mode": "palette-classic" }
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "auto"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
         },
         "overrides": [
           {
-            "matcher": { "id": "byRegexp", "options": ".*baseline.*" },
-            "properties": [{ "id": "custom.lineStyle", "value": { "dash": [10, 5], "fill": "dash" }}]
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*baseline.*"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    5
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
           }
         ]
       },
       "targets": [
         {
-          "expr": "feature_distribution_std{dataset_type=\"baseline\"}",
+          "expr": "feature_distribution_std{modelo=~\"$modelo\",dataset_type=\"baseline\"}",
           "legendFormat": "{{feature}} (baseline)",
           "refId": "A",
           "interval": "",
           "step": 60
         },
         {
-          "expr": "feature_distribution_std{dataset_type=\"production\"}",
+          "expr": "feature_distribution_std{modelo=~\"$modelo\",dataset_type=\"production\"}",
           "legendFormat": "{{feature}} (produção)",
           "refId": "B",
           "interval": "",
           "step": 60
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 52,
       "type": "bargauge",
       "title": "Diferença Percentual nas Médias (Produção vs Baseline)",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
       "description": "Mostra quanto % a média de produção difere do baseline",
       "options": {
         "displayMode": "gradient",
         "minVizHeight": 10,
         "orientation": "horizontal",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "showUnfilled": true
       },
       "fieldConfig": {
@@ -373,10 +653,22 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 10 },
-              { "color": "orange", "value": 20 },
-              { "color": "red", "value": 30 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "orange",
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
             ]
           },
           "decimals": 1
@@ -384,70 +676,95 @@
       },
       "targets": [
         {
-          "expr": "100 * (feature_distribution_mean{dataset_type=\"production\"} - on(feature, modelo, versao) feature_distribution_mean{dataset_type=\"baseline\"}) / on(feature, modelo, versao) feature_distribution_mean{dataset_type=\"baseline\"}",
+          "expr": "100 * (feature_distribution_mean{modelo=~\"$modelo\",dataset_type=\"production\"} - on(feature, modelo, versao) feature_distribution_mean{modelo=~\"$modelo\",dataset_type=\"baseline\"}) / on(feature, modelo, versao) feature_distribution_mean{modelo=~\"$modelo\",dataset_type=\"baseline\"}",
           "legendFormat": "{{feature}}",
           "refId": "A",
           "instant": true
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 53,
       "type": "table",
       "title": "Resumo Estatístico: Baseline vs Produção (Latest)",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
       "description": "Tabela comparativa com estatísticas descritivas",
       "options": {
-        "footer": { "show": false },
+        "footer": {
+          "show": false
+        },
         "showHeader": true,
         "sortBy": []
       },
       "fieldConfig": {
         "defaults": {
-          "custom": { "align": "auto", "filterable": true },
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
           "decimals": 2
         }
       },
       "targets": [
         {
-          "expr": "feature_distribution_mean",
+          "expr": "feature_distribution_mean{modelo=~\"$modelo\"}",
           "legendFormat": "{{feature}} ({{dataset_type}}) - mean",
           "refId": "A",
           "instant": true,
           "format": "table"
         },
         {
-          "expr": "feature_distribution_std",
+          "expr": "feature_distribution_std{modelo=~\"$modelo\"}",
           "legendFormat": "{{feature}} ({{dataset_type}}) - std",
           "refId": "B",
           "instant": true,
           "format": "table"
         },
         {
-          "expr": "feature_distribution_median",
+          "expr": "feature_distribution_median{modelo=~\"$modelo\"}",
           "legendFormat": "{{feature}} ({{dataset_type}}) - median",
           "refId": "C",
           "instant": true,
           "format": "table"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 60,
       "type": "stat",
       "title": "Alertas Ativos do Prometheus",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
       "description": "Número de alertas ativos relacionados a data drift",
       "options": {
         "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "fieldConfig": {
@@ -455,9 +772,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 3 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
             ]
           },
           "unit": "short"
@@ -465,28 +791,45 @@
       },
       "targets": [
         {
-          "expr": "count(ALERTS{alertstate=\"firing\", alertname=~\".*Drift.*\"})",
+          "expr": "count(ALERTS{alertstate=\"firing\", alertname=~\".*(Drift|Performance).*\"})",
           "legendFormat": "Alertas Firing",
           "refId": "A"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 61,
       "type": "table",
       "title": "Lista de Alertas Ativos",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
       "description": "Alertas de drift que estão firing ou pending",
       "options": {
-        "footer": { "show": false },
+        "footer": {
+          "show": false
+        },
         "showHeader": true,
-        "sortBy": [{ "desc": true, "displayName": "Time" }]
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Time"
+          }
+        ]
       },
       "fieldConfig": {
         "defaults": {
-          "custom": { "align": "auto", "filterable": true }
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
         }
       },
       "targets": [
@@ -498,20 +841,29 @@
           "format": "table"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
     },
-
     {
       "id": 62,
       "type": "alertlist",
       "title": "Histórico de Alertas",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      },
       "description": "Painel com lista de alertas do dashboard",
       "options": {
         "alertName": "",
         "dashboardAlerts": false,
         "alertInstanceLabelFilter": "",
-        "groupBy": ["alertname"],
+        "groupBy": [
+          "alertname"
+        ],
         "groupMode": "default",
         "maxItems": 20,
         "sortOrder": 1,
@@ -524,13 +876,274 @@
         },
         "folder": ""
       },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      }
+    },
+    {
+      "type": "row",
+      "title": "Desempenho real (previsões com valor de anúncio)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "collapsed": false,
+      "panels": [],
+      "id": 63
+    },
+    {
+      "type": "stat",
+      "title": "MAPE recente",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "model_performance{metrica=\"mape\", modelo=~\"$modelo\"}",
+          "legendFormat": "{{modelo}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.2
+              },
+              {
+                "color": "red",
+                "value": 0.3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "textMode": "value_and_name"
+      },
+      "id": 64
+    },
+    {
+      "type": "stat",
+      "title": "MAE (R$)",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "model_performance{metrica=\"mae_reais\", modelo=~\"$modelo\"}",
+          "legendFormat": "{{modelo}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value_and_name"
+      },
+      "id": 65
+    },
+    {
+      "type": "stat",
+      "title": "Viés mediano (+ = superestima)",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "model_performance{metrica=\"vies_mediano\", modelo=~\"$modelo\"}",
+          "legendFormat": "{{modelo}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value_and_name"
+      },
+      "id": 66
+    },
+    {
+      "type": "stat",
+      "title": "Amostras (janela atual)",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "model_performance{metrica=\"n_previsoes\", modelo=~\"$modelo\"}",
+          "legendFormat": "{{modelo}} · previsões",
+          "refId": "A",
+          "instant": true
+        },
+        {
+          "expr": "model_performance{metrica=\"n_com_valor_real\", modelo=~\"$modelo\"}",
+          "legendFormat": "{{modelo}} · com valor real",
+          "refId": "B",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 30
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "textMode": "value_and_name"
+      },
+      "id": 67
+    },
+    {
+      "type": "timeseries",
+      "title": "MAPE ao longo do tempo vs. limite",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 50
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "model_performance{metrica=\"mape\", modelo=~\"$modelo\"}",
+          "legendFormat": "{{modelo}} · MAPE",
+          "refId": "A"
+        },
+        {
+          "expr": "model_performance{metrica=\"mape_limite\", modelo=~\"$modelo\"}",
+          "legendFormat": "{{modelo}} · limite",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*limite"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    8,
+                    6
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "id": 68
     }
-
   ],
-
   "schemaVersion": 38,
-  "tags": ["drift", "mlops", "imoveis"],
+  "tags": [
+    "drift",
+    "mlops",
+    "imoveis"
+  ],
   "templating": {
     "list": [
       {
@@ -542,13 +1155,45 @@
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
+      },
+      {
+        "name": "modelo",
+        "label": "Modelo",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": {
+          "query": "label_values(feature_drift_score, modelo)",
+          "refId": "modelo"
+        },
+        "definition": "label_values(feature_drift_score, modelo)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1,
+        "hide": 0
       }
     ]
   },
-  "time": { "from": "now-24h", "to": "now" },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
   "timepicker": {},
   "timezone": "America/Sao_Paulo",
-  "title": "Data Drift — Precificação de Imóveis",
+  "title": "Monitoramento de Modelos — Drift e Desempenho",
   "uid": "drift-imoveis-v1",
-  "version": 1
+  "version": 2
 }

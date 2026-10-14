@@ -1,33 +1,69 @@
-model:
-  name: "precificacao_imoveis"
-  version: "v2"
+# Monitoramento de drift e desempenho — um bloco por modelo.
+# Lido por monitoring/jobs/run_data_drift.py.
 
 time_windows:
-  baseline_days: 180
-  current_days: 14
-
-features:
-  numerical:
-    - area_m2
-    - banheiros
-    - quartos
-    - vagas_garagem
-    - score_escola_privada
-    - score_escola_publica
-    - score_farmacia
-    - score_hospitais
-    - score_mercado
-    - score_parque
-    - score_seguranca
-
-targets:
-  - preco_anuncio
-
-predictions:
-  - preco_predito
+  current_days: 14            # janela de produção comparada com o baseline
 
 drift:
   # Evidently 0.7.x usa Wasserstein distance (normed): 0=idêntico, maior=mais drift
   # Alerta warning  : drift_score >= 0.10
   # Alerta critical : drift_score >= 0.30
   wasserstein_threshold: 0.10
+  # Abaixo disso o drift é calculado, mas a amostra é pequena demais para conclusões
+  min_amostras_confiavel: 30
+
+modelos:
+
+  compra:
+    name: "precificacao_imoveis"       # rótulo histórico das métricas no Grafana
+    version: "v2"
+    baseline_parquet: "data/processed/baseline_monitoring.parquet"
+    tabela_features: "predicoes"       # colunas das features de entrada
+    tabela_predicoes: "predicoes"
+    coluna_real: "preco_anuncio"
+    coluna_predita: "preco_predito"
+    mape_limite: 0.30                  # alerta de degradação acima disso
+    features:
+      - area_m2
+      - banheiros
+      - quartos
+      - vagas_garagem
+      - score_escola_privada
+      - score_escola_publica
+      - score_farmacia
+      - score_hospitais
+      - score_mercado
+      - score_parque
+      - score_seguranca
+
+  aluguel:
+    name: "RentPriceModel_SP"
+    mlflow_model: "RentPriceModel_SP"  # versão lida do Model Registry
+    baseline_parquet: "data/processed/baseline_aluguel.parquet"   # gerado por generate_baseline_aluguel.py
+    tabela_features: "features_monitoramento_aluguel"
+    tabela_predicoes: "predicoes_aluguel"
+    coluna_real: "aluguel_anuncio"
+    coluna_predita: "aluguel_predito"
+    mape_limite: 0.25                  # treino: MAPE 18,5% no holdout
+    # Nomes em minúsculas: o Postgres guarda parkingSpaces como parkingspaces
+    features:
+      - bedrooms
+      - bathrooms
+      - parkingspaces
+      - area
+      - suites
+      - score_escola_privada
+      - score_escola_publica
+      - score_hospitais
+      - score_mercado
+      - score_farmacia
+      - score_parque
+      - score_seguranca
+      - score_metro
+      - mobiliado
+      - am_ar_condicionado
+      - inst_piscina
+      - inst_academia
+      - am_varanda
+      - dist_centro_km
+      - dist_polo_km

@@ -38,3 +38,9 @@ notebooks/aluguel/cache_geocoding_sp.csv
 
 # MLflow (runs e modelos ficam só local)
 mlruns/
+
+# Baseline de drift do aluguel (derivado dos dados coletados)
+data/processed/baseline_aluguel.parquet
+
+# Relatórios HTML do Evidently (gerados a cada execução do drift_job)
+results/drift_reports/

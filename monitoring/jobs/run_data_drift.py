@@ -1,205 +1,229 @@
 """
 run_data_drift.py
 =================
-Job agendado (cron / Airflow) que:
-  1. Carrega dados de referência (baseline parquet ou PostgreSQL)
-  2. Carrega dados de produção recentes do PostgreSQL
-  3. Calcula Data Drift com Evidently 0.7.x
-  4. Persiste as métricas no PostgreSQL
-  5. Salva relatório HTML para auditoria
+Job agendado (serviço drift_job do docker-compose; depois Airflow) que, para cada
+modelo de monitoring/config/features.yaml (compra e aluguel):
+  1. Carrega o baseline (features do treino, parquet)
+  2. Carrega as features de produção dos últimos N dias do PostgreSQL
+  3. Calcula Data Drift com Evidently 0.7.x e salva estatísticas de distribuição
+  4. Calcula o desempenho real (MAE, MAPE, viés) nas previsões com valor de anúncio
+  5. Persiste tudo em metrics_monitoramento / distribution_stats e salva HTML
+
+Um modelo sem dados recentes é pulado com aviso — não interrompe os demais.
 
 Escala de drift_score (Evidently 0.7.x usa Wasserstein distance normed):
   - 0.0  = distribuições idênticas
   - 0.1+ = drift moderado   → warning
   - 0.3+ = drift significativo → critical
-  O valor é armazenado direto: drift_score = wasserstein_distance (clipped a 1.0)
 
 Uso:
-    python monitoring/jobs/run_data_drift.py
+    python monitoring/jobs/run_data_drift.py              # todos os modelos
+    python monitoring/jobs/run_data_drift.py aluguel      # só um modelo
 
-Modo teste (sem PostgreSQL):
-    DRIFT_DRY_RUN=1 python monitoring/jobs/run_data_drift.py
+Modos de teste:
+    DRIFT_DRY_RUN=1  → calcula e imprime, sem gravar no PostgreSQL
+    DRIFT_SEED=1     → usa amostra do baseline (com ruído) como produção e grava
 """
 
 import datetime
 import os
 import sys
+import warnings
 
+import numpy as np
 import pandas as pd
 import yaml
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.insert(0, ROOT)
 
-from evidently import Dataset, Report
-from evidently.presets import DataDriftPreset
+# Features constantes na amostra atual geram divisão por zero dentro do Evidently (inofensivo)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-from monitoring.db.postgres import (load_baseline_data, load_current_data,
-                                 save_distribution_stats, save_metric)
+from evidently import Dataset, Report  # noqa: E402
+from evidently.presets import DataDriftPreset  # noqa: E402
+
+from monitoring.db.postgres import load_janela, save_distribution_stats, save_metric  # noqa: E402
 
 # ── Configuração ──────────────────────────────────────────────────────────────
-CONFIG_PATH      = os.path.join(os.path.dirname(__file__), "../config/features.yaml")
-BASELINE_PARQUET = os.path.join(ROOT, "data/processed/baseline_monitoring.parquet")
-REPORTS_DIR      = os.path.join(ROOT, "results/drift_reports")
-
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "../config/features.yaml")
+REPORTS_DIR = os.path.join(ROOT, "results/drift_reports")
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 with open(CONFIG_PATH, "r") as f:
     config = yaml.safe_load(f)
 
-MODEL_NAME    = config["model"]["name"]
-MODEL_VERSION = config["model"]["version"]
-BASELINE_DAYS = config["time_windows"]["baseline_days"]
-CURRENT_DAYS  = config["time_windows"]["current_days"]
-NUM_FEATURES  = config["features"]["numerical"]
-# Wasserstein normed: alerta quando dist > wasserstein_threshold (default 0.1)
+CURRENT_DAYS = config["time_windows"]["current_days"]
 WASSERSTEIN_THRESHOLD = config.get("drift", {}).get("wasserstein_threshold", 0.1)
+MIN_AMOSTRAS = config.get("drift", {}).get("min_amostras_confiavel", 30)
 
-DRY_RUN  = os.getenv("DRIFT_DRY_RUN", "0") == "1"
-# DRIFT_SEED=1 → usa parquet para baseline E current, mas salva no PostgreSQL
-# útil para popular o banco na primeira execução (sem dados de produção ainda)
+DRY_RUN = os.getenv("DRIFT_DRY_RUN", "0") == "1"
 SEED_MODE = os.getenv("DRIFT_SEED", "0") == "1"
+SALVAR = not DRY_RUN
 
-# ── Carregar dados ────────────────────────────────────────────────────────────
-print("📂 Carregando dados de referência...")
 
-if DRY_RUN or SEED_MODE:
-    import numpy as np
-    mode_label = "SEED (salva no PostgreSQL)" if SEED_MODE else "DRY RUN (sem PostgreSQL)"
-    print(f"   [{mode_label}] Parquet como referência + ruído leve como current.")
-    _raw = pd.read_parquet(BASELINE_PARQUET)
-    baseline_df = _raw[NUM_FEATURES].dropna()
-    current_df  = baseline_df.sample(min(300, len(baseline_df)), random_state=1).copy()
-    current_df["area_m2"]       *= np.random.uniform(0.8, 1.2, len(current_df))
-    current_df["score_mercado"]  *= np.random.uniform(1.0, 1.5, len(current_df))
-else:
-    baseline_db = load_baseline_data(BASELINE_DAYS)
-    if baseline_db.empty:
-        print("   ⚠️  Baseline PostgreSQL vazio — usando parquet.")
-        _raw = pd.read_parquet(BASELINE_PARQUET)
-        baseline_df = _raw[NUM_FEATURES].dropna()
-    else:
-        baseline_df = baseline_db[NUM_FEATURES].dropna()
+def versao_do_modelo(cfg: dict) -> str:
+    """Versão fixa do YAML ou a última registrada no MLflow (ex.: 'v1')."""
+    if not cfg.get("mlflow_model"):
+        return cfg.get("version", "unknown")
+    try:
+        import mlflow
+        from mlflow import MlflowClient
 
-    current_df = load_current_data(CURRENT_DAYS)
-    if current_df.empty:
-        raise ValueError(f"❌ Sem dados de produção nos últimos {CURRENT_DAYS} dias.")
-    current_df = current_df[NUM_FEATURES].dropna()
+        mlflow.set_tracking_uri(f"file:{os.path.join(ROOT, 'mlruns')}")
+        versoes = MlflowClient().search_model_versions(f"name='{cfg['mlflow_model']}'")
+        return f"v{max(int(v.version) for v in versoes)}"
+    except Exception as exc:
+        print(f"   ⚠️  Versão não encontrada no MLflow ({exc}); usando '{cfg.get('version', 'unknown')}'")
+        return cfg.get("version", "unknown")
 
-print(f"   Referência: {len(baseline_df)} linhas | Atual: {len(current_df)} linhas")
-
-# ── Calcular e salvar estatísticas de distribuição ───────────────────────────
-print("📊 Calculando estatísticas de distribuição...")
 
 def calc_stats(series: pd.Series) -> dict:
-    """Calcula estatísticas descritivas de uma Series pandas"""
-    # Garantir que é numérica e dropna
-    series_clean = pd.to_numeric(series, errors='coerce').dropna()
-    
-    if len(series_clean) == 0:
-        return {
-            'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0,
-            'p25': 0.0, 'p50': 0.0, 'p75': 0.0, 'count': 0
-        }
-    
+    """Estatísticas descritivas de uma Series pandas."""
+    s = pd.to_numeric(series, errors="coerce").dropna()
+    if len(s) == 0:
+        return {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0, "p25": 0.0, "p50": 0.0, "p75": 0.0, "count": 0}
     return {
-        'mean': float(series_clean.mean()),
-        'std': float(series_clean.std()),
-        'min': float(series_clean.min()),
-        'max': float(series_clean.max()),
-        'p25': float(series_clean.quantile(0.25)),
-        'p50': float(series_clean.quantile(0.50)),
-        'p75': float(series_clean.quantile(0.75)),
-        'count': int(len(series_clean))
+        "mean": float(s.mean()), "std": float(s.std()) if len(s) > 1 else 0.0,
+        "min": float(s.min()), "max": float(s.max()),
+        "p25": float(s.quantile(0.25)), "p50": float(s.quantile(0.50)), "p75": float(s.quantile(0.75)),
+        "count": int(len(s)),
     }
 
-for feature in NUM_FEATURES:
-    if feature in baseline_df.columns and feature in current_df.columns:
-        baseline_stats = calc_stats(baseline_df[feature])
-        current_stats = calc_stats(current_df[feature])
-        
-        if not DRY_RUN or SEED_MODE:
-            save_distribution_stats(feature, 'baseline', baseline_stats, MODEL_NAME, MODEL_VERSION)
-            save_distribution_stats(feature, 'production', current_stats, MODEL_NAME, MODEL_VERSION)
 
-print(f"   Estatísticas salvas para {len(NUM_FEATURES)} features")
+# ══════════════════════════════════════════════════════════════════════════════
+# Desempenho (erro real nas previsões com valor de anúncio)
+# ══════════════════════════════════════════════════════════════════════════════
+def calcular_desempenho(cfg: dict, nome: str, versao: str):
+    preds = load_janela(cfg["tabela_predicoes"], CURRENT_DAYS)
+    n_previsoes = len(preds)
+    metricas = {"n_previsoes": float(n_previsoes), "mape_limite": float(cfg["mape_limite"])}
 
-# ── Relatório Evidently 0.7.x ─────────────────────────────────────────────────
-print("🔍 Calculando Data Drift com Evidently 0.7.x ...")
+    if n_previsoes:
+        real = pd.to_numeric(preds[cfg["coluna_real"]], errors="coerce")
+        prev = pd.to_numeric(preds[cfg["coluna_predita"]], errors="coerce")
+        ok = real.notna() & prev.notna() & (real > 0)
+        real, prev = real[ok], prev[ok]
+        metricas["n_com_valor_real"] = float(len(real))
+        if len(real):
+            erro_pct = (prev - real).abs() / real
+            metricas.update({
+                "mae_reais": float((prev - real).abs().mean()),
+                "mape": float(erro_pct.mean()),
+                "mdape": float(erro_pct.median()),
+                "vies_mediano": float((prev / real - 1).median()),   # > 0: modelo superestima
+            })
+    else:
+        metricas["n_com_valor_real"] = 0.0
 
-report   = Report(metrics=[DataDriftPreset()])
-snapshot = report.run(
-    reference_data=Dataset.from_pandas(baseline_df),
-    current_data=Dataset.from_pandas(current_df),
-)
+    print(f"   📏 Desempenho ({CURRENT_DAYS} dias): {n_previsoes} previsões, "
+          f"{int(metricas['n_com_valor_real'])} com valor real", end="")
+    if "mape" in metricas:
+        alerta = " ⚠️ ACIMA DO LIMITE" if metricas["mape"] > cfg["mape_limite"] else ""
+        print(f" | MAE R$ {metricas['mae_reais']:,.0f} | MAPE {metricas['mape']:.1%} "
+              f"(limite {cfg['mape_limite']:.0%}){alerta}")
+    else:
+        print(" | sem valor real para medir erro")
 
-timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-html_path = os.path.join(REPORTS_DIR, f"drift_report_{timestamp}.html")
-try:
-    snapshot.save_html(html_path)
-    print(f"   HTML: {html_path}")
-except Exception as e:
-    print(f"   ⚠️  HTML não salvo: {e}")
+    if SALVAR:
+        for metrica, valor in metricas.items():
+            save_metric(metrica, valor, "dataset", "performance", nome, versao)
 
-# ── Extrair métricas ──────────────────────────────────────────────────────────
-# Evidently 0.7.x — estrutura do snapshot.dict():
-#   DriftedColumnsCount → value = {"count": int, "share": float}
-#   ValueDrift(column=X) → value = Wasserstein distance (normed)
-#                          config.threshold = limiar de detecção (default ~0.1)
 
-snap_dict        = snapshot.dict()
-drifted_features = []
-all_drift_scores = {}
-dataset_drifted  = False
-share_drifted    = 0.0
+# ══════════════════════════════════════════════════════════════════════════════
+# Drift das features de entrada
+# ══════════════════════════════════════════════════════════════════════════════
+def calcular_drift(cfg: dict, chave: str, nome: str, versao: str):
+    features = cfg["features"]
+    baseline_df = pd.read_parquet(os.path.join(ROOT, cfg["baseline_parquet"]))
+    baseline_df.columns = baseline_df.columns.str.lower()
+    baseline_df = baseline_df[features].astype(float).dropna()
 
-for entry in snap_dict.get("metrics", []):
-    m_name = entry.get("metric_name", "")
-    value  = entry.get("value")
-    cfg    = entry.get("config", {})
+    if SEED_MODE:
+        current_df = baseline_df.sample(min(300, len(baseline_df)), random_state=1).copy()
+        current_df[features[0]] *= np.random.uniform(0.8, 1.2, len(current_df))
+    else:
+        atual = load_janela(cfg["tabela_features"], CURRENT_DAYS)
+        if atual.empty:
+            print(f"   ⏭️  Sem dados de produção nos últimos {CURRENT_DAYS} dias — drift não calculado.")
+            return
+        current_df = atual[features].astype(float).dropna()
 
-    # ── DriftedColumnsCount ────────────────────────────────────────────────
-    if "DriftedColumnsCount" in m_name and isinstance(value, dict):
-        share_drifted   = float(value.get("share", 0.0))
-        drifted_count   = int(value.get("count", 0))
-        dataset_drifted = share_drifted >= 0.5
+    n_atual = len(current_df)
+    aviso = f"  ⚠️ amostra pequena (< {MIN_AMOSTRAS}): drift indicativo" if n_atual < MIN_AMOSTRAS else ""
+    print(f"   Referência: {len(baseline_df):,} linhas | Atual: {n_atual} linhas{aviso}")
 
-        if not DRY_RUN or SEED_MODE:
-            save_metric("dataset_drift_detected", float(dataset_drifted),
-                        "dataset", "drift", MODEL_NAME, MODEL_VERSION)
-            save_metric("share_drifted_columns", round(share_drifted, 4),
-                        "dataset", "drift", MODEL_NAME, MODEL_VERSION)
+    for feature in features:
+        if SALVAR:
+            save_distribution_stats(feature, "baseline", calc_stats(baseline_df[feature]), nome, versao)
+            save_distribution_stats(feature, "production", calc_stats(current_df[feature]), nome, versao)
 
-        print(f"\n📊 Dataset drift: {dataset_drifted} "
-              f"({share_drifted:.1%} — {drifted_count} features)")
+    report = Report(metrics=[DataDriftPreset()])
+    snapshot = report.run(
+        reference_data=Dataset.from_pandas(baseline_df),
+        current_data=Dataset.from_pandas(current_df),
+    )
 
-    # ── ValueDrift por feature (Wasserstein distance normed) ──────────────
-    elif "ValueDrift" in m_name and isinstance(value, (int, float)):
-        feature_name    = cfg.get("column", m_name)
-        raw_score       = float(value)
-        threshold       = float(cfg.get("threshold", WASSERSTEIN_THRESHOLD))
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    html_path = os.path.join(REPORTS_DIR, f"drift_report_{chave}_{timestamp}.html")
+    try:
+        snapshot.save_html(html_path)
+    except Exception as e:
+        print(f"   ⚠️  HTML não salvo: {e}")
 
-        # Wasserstein normed: normalmente 0–1, mas pode ser > 1 em outliers
-        drift_score     = min(round(raw_score, 6), 1.0)
-        feature_drifted = raw_score >= threshold
+    # Evidently 0.7.x — estrutura do snapshot.dict():
+    #   DriftedColumnsCount → value = {"count": int, "share": float}
+    #   ValueDrift(column=X) → value = distância (Wasserstein normed p/ numéricas)
+    drifted, scores = [], {}
+    for entry in snapshot.dict().get("metrics", []):
+        m_name, value, mcfg = entry.get("metric_name", ""), entry.get("value"), entry.get("config", {})
 
-        all_drift_scores[feature_name] = drift_score
-        if feature_drifted:
-            drifted_features.append(feature_name)
+        if "DriftedColumnsCount" in m_name and isinstance(value, dict):
+            share = float(value.get("share", 0.0))
+            if SALVAR:
+                save_metric("dataset_drift_detected", float(share >= 0.5), "dataset", "drift", nome, versao)
+                save_metric("share_drifted_columns", round(share, 4), "dataset", "drift", nome, versao)
+                save_metric("n_amostras_atual", float(n_atual), "dataset", "drift", nome, versao)
+            print(f"   📊 Dataset drift: {share >= 0.5} ({share:.1%} — {int(value.get('count', 0))} features)")
 
-        if not DRY_RUN or SEED_MODE:
-            save_metric("data_drift", drift_score,
-                        feature_name, "drift", MODEL_NAME, MODEL_VERSION)
+        elif "ValueDrift" in m_name and isinstance(value, (int, float)):
+            feature = mcfg.get("column", m_name)
+            raw = float(value)
+            score = min(round(raw, 6), 1.0)
+            scores[feature] = score
+            if raw >= float(mcfg.get("threshold", WASSERSTEIN_THRESHOLD)):
+                drifted.append(feature)
+            if SALVAR:
+                save_metric("data_drift", score, feature, "drift", nome, versao)
 
-# ── Resumo ────────────────────────────────────────────────────────────────────
-print("\n─────────────────────────────────────────────────────────────────")
-print(f"{'Feature':<30} {'Wasserstein Dist':>18} {'Drifted':>8}")
-print("─────────────────────────────────────────────────────────────────")
-for feat, ds in sorted(all_drift_scores.items(), key=lambda x: -x[1]):
-    flag = "⚠️ " if feat in drifted_features else "  "
-    print(f"{flag}{feat:<28} {ds:>18.4f}  {'YES' if feat in drifted_features else 'no'}")
-print("─────────────────────────────────────────────────────────────────")
-print(f"\nFeatures com drift ({len(drifted_features)}): {drifted_features}")
-mode_desc = "DRY_RUN (sem salvar)" if DRY_RUN else ("SEED (parquet → PostgreSQL)" if SEED_MODE else "salvo no PostgreSQL")
-print(f"\n✅ Data Drift {mode_desc} com sucesso.")
-print(f"\n✅ Data Drift {mode_desc} com sucesso.")
+    print(f"   {'Feature':<26}{'Drift':>10}")
+    for feat, sc in sorted(scores.items(), key=lambda x: -x[1])[:8]:
+        print(f"   {'⚠️ ' if feat in drifted else '  '}{feat:<24}{sc:>10.4f}")
+    print(f"   Features com drift ({len(drifted)}): {drifted}  |  HTML: {os.path.basename(html_path)}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+def main():
+    selecionados = sys.argv[1:] or list(config["modelos"])
+    modo = "DRY RUN (sem gravar)" if DRY_RUN else ("SEED" if SEED_MODE else "produção → PostgreSQL")
+    print(f"🔍 Monitoramento [{modo}] — janela de {CURRENT_DAYS} dias — modelos: {selecionados}")
+
+    falhas = []
+    for chave in selecionados:
+        cfg = config["modelos"][chave]
+        versao = versao_do_modelo(cfg)
+        print(f"\n━━ {chave}: {cfg['name']} ({versao}) ━━")
+        try:
+            calcular_drift(cfg, chave, cfg["name"], versao)
+            if not SEED_MODE:
+                calcular_desempenho(cfg, cfg["name"], versao)
+        except Exception as exc:
+            falhas.append(chave)
+            print(f"   ❌ Erro no modelo {chave}: {exc}")
+
+    print(f"\n{'✅ Monitoramento concluído' if not falhas else f'⚠️ Concluído com falhas em: {falhas}'}")
+    sys.exit(1 if falhas else 0)
+
+
+if __name__ == "__main__":
+    main()

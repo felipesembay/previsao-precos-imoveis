@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import psycopg
 from dotenv import load_dotenv
+from psycopg import sql
 from psycopg.rows import dict_row
 
 # Execução local: lê PG_* do mesmo .env das telas. No Docker, as variáveis vêm do compose.
@@ -29,22 +30,12 @@ def _read_sql(query: str, params=None) -> pd.DataFrame:
             return pd.DataFrame(cursor.fetchall())
 
 
-def load_baseline_data(baseline_days: int) -> pd.DataFrame:
-    query = """
-        SELECT *
-        FROM predicoes
-        WHERE created_at < NOW() - make_interval(days => %s)
-    """
-    return _read_sql(query, (int(baseline_days),))
-
-
-def load_current_data(current_days: int) -> pd.DataFrame:
-    query = """
-        SELECT *
-        FROM predicoes
-        WHERE created_at >= NOW() - make_interval(days => %s)
-    """
-    return _read_sql(query, (int(current_days),))
+def load_janela(tabela: str, dias: int) -> pd.DataFrame:
+    """Linhas de `tabela` criadas nos últimos `dias` dias (colunas em minúsculas, como no Postgres)."""
+    query = sql.SQL("SELECT * FROM {} WHERE created_at >= NOW() - make_interval(days => %s)").format(
+        sql.Identifier(tabela)
+    )
+    return _read_sql(query, (int(dias),))
 
 
 def save_metric(

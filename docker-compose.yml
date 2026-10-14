@@ -18,6 +18,7 @@
 # grafana        http://localhost:3002        dashboards de drift
 # prometheus     http://localhost:9090        métricas e alertas
 # exporter       http://localhost:8007        métricas de drift → Prometheus
+# drift_job      —                            drift + desempenho a cada hora → Postgres
 # ═══════════════════════════════════════════════════════════════════════════════
 
 name: imoveis
@@ -116,6 +117,16 @@ services:
         condition: service_healthy
       api:
         condition: service_started
+
+  # ── Job de drift e desempenho (a cada hora; depois será uma DAG do Airflow) ──
+  drift_job:
+    <<: *app
+    container_name: imoveis_drift_job
+    command: >
+      sh -c "while true; do
+               python monitoring/jobs/run_data_drift.py;
+               sleep $${DRIFT_INTERVAL_SECONDS:-3600};
+             done"
 
   # ── Metabase (BI sobre o banco imoveis) ────────────────────────────────────
   metabase:

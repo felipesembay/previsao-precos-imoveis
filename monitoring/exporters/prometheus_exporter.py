@@ -92,6 +92,15 @@ distribution_max_gauge = Gauge(
 )
 
 
+# ── Desempenho real do modelo (previsões com valor de anúncio) ───────────────
+performance_gauge = Gauge(
+    "model_performance",
+    "Desempenho do modelo na janela recente: mape, mdape, mae_reais, vies_mediano, "
+    "mape_limite, n_previsoes, n_com_valor_real, n_amostras_atual",
+    ["metrica", "modelo", "versao"],
+)
+
+
 # ─── Lógica de coleta ─────────────────────────────────────────────────────────
 def _get_connection():
     return _pg_connection()   # PostgreSQL, linhas como dict
@@ -225,6 +234,33 @@ def collect_and_expose() -> None:
         
         except Exception as exc_dist:
             log.error("Erro ao coletar estatísticas de distribuição: %s", exc_dist)
+
+        # ── Desempenho (última leitura por métrica/modelo/versão) ────────────
+        try:
+            with _get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT DISTINCT ON (metric_name, modelo, versao_modelo)
+                               metric_name, metric_value, modelo, versao_modelo
+                        FROM metrics_monitoramento
+                        WHERE metric_type = 'performance' OR metric_name = 'n_amostras_atual'
+                        ORDER BY metric_name, modelo, versao_modelo, created_at DESC
+                        """
+                    )
+                    perf_rows = cur.fetchall()
+
+            for row in perf_rows:
+                performance_gauge.labels(
+                    metrica=row["metric_name"],
+                    modelo=row["modelo"] or "unknown",
+                    versao=row["versao_modelo"] or "unknown",
+                ).set(float(row["metric_value"]))
+
+            log.info("Métricas de desempenho coletadas: %d registros.", len(perf_rows))
+
+        except Exception as exc_perf:
+            log.error("Erro ao coletar métricas de desempenho: %s", exc_perf)
 
     except Exception as exc:
         log.error("Erro ao coletar métricas do PostgreSQL: %s", exc)

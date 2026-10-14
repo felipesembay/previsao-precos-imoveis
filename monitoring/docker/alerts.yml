@@ -1,10 +1,11 @@
 groups:
+  # Alertas de drift só disparam com >= 30 previsões na janela (amostra menor gera drift falso)
   - name: data_drift_alerts
     rules:
 
       # ── Alerta: feature individual com drift (Wasserstein >= 0.10) ────────────
       - alert: FeatureDriftHigh
-        expr: feature_drift_score >= 0.10
+        expr: feature_drift_score >= 0.10 and on(modelo, versao) model_performance{metrica="n_amostras_atual"} >= 30
         for: 5m
         labels:
           severity: warning
@@ -17,7 +18,7 @@ groups:
 
       # ── Alerta: drift crítico (Wasserstein >= 0.30) ─────────────────────────
       - alert: FeatureDriftCritical
-        expr: feature_drift_score >= 0.30
+        expr: feature_drift_score >= 0.30 and on(modelo, versao) model_performance{metrica="n_amostras_atual"} >= 30
         for: 5m
         labels:
           severity: critical
@@ -29,7 +30,7 @@ groups:
 
       # ── Alerta: dataset inteiro driftou ───────────────────────────────────
       - alert: DatasetDriftDetected
-        expr: dataset_drift_detected == 1
+        expr: dataset_drift_detected == 1 and on(modelo, versao) model_performance{metrica="n_amostras_atual"} >= 30
         for: 1m
         labels:
           severity: critical
@@ -42,7 +43,7 @@ groups:
 
       # ── Alerta: mais de 50% das features driftadas ────────────────────────
       - alert: MajorityFeaturesDrifted
-        expr: share_drifted_columns > 0.5
+        expr: share_drifted_columns > 0.5 and on(modelo, versao) model_performance{metrica="n_amostras_atual"} >= 30
         for: 5m
         labels:
           severity: critical
@@ -63,3 +64,23 @@ groups:
           description: >
             O job run_data_drift.py não atualizou métricas há {{ $value | humanizeDuration }}.
             Verifique o agendamento (cron/Airflow).
+
+  - name: model_performance_alerts
+    rules:
+
+      # ── Alerta: erro real acima do limite do modelo (base do retreino automático) ──
+      - alert: ModelPerformanceDegraded
+        expr: >
+          model_performance{metrica="mape"}
+            > on(modelo, versao) model_performance{metrica="mape_limite"}
+          and on(modelo, versao)
+            model_performance{metrica="n_com_valor_real"} >= 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Desempenho degradado no modelo {{ $labels.modelo }}"
+          description: >
+            O MAPE recente do modelo {{ $labels.modelo }} ({{ $labels.versao }}) está em
+            {{ $value | humanizePercentage }}, acima do limite configurado em
+            monitoring/config/features.yaml. Avaliar retreinamento.
