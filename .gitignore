@@ -42,5 +42,8 @@ mlruns/
 # Baseline de drift do aluguel (derivado dos dados coletados)
 data/processed/baseline_aluguel.parquet
 
-# Relatórios HTML do Evidently (gerados a cada execução do drift_job)
+# Relatórios HTML do Evidently (gerados a cada execução da DAG monitoramento_modelos)
 results/drift_reports/
+
+# Logs do Airflow
+airflow/logs/

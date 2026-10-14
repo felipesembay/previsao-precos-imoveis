@@ -128,14 +128,17 @@ previsao-precos-imoveis/
 │   │   ├── pipeline.py            # Features e scores de POI — compra
 │   │   └── aluguel.py             # Features, scores e transformers — aluguel
 │   ├── preprocessing/
-│   │   └── clean.py               # QuantileClipper + ColumnTransformer (compartilhado)
+│   │   ├── clean.py               # QuantileClipper + ColumnTransformer (compartilhado)
+│   │   └── aluguel.py             # Limpeza + POIs + features do aluguel em script (retreino)
 │   ├── models/
 │   │   ├── train.py               # Treino + MLflow — compra
 │   │   ├── train_aluguel.py       # Treino + MLflow — aluguel
+│   │   ├── promover_aluguel.py    # Champion × challenger (alias @champion)
+│   │   ├── registro.py            # Acesso ao Model Registry
 │   │   └── predict.py             # Carregamento do modelo e inferência
 │   ├── geocoding/
 │   │   └── geocode.py             # Geocoding (OpenCage)
-│   └── scraping/                  # Coletores (ZAP Imóveis e aluguel)
+│   └── scraping/                  # Coletores (ZAP Imóveis e API do QuintoAndar)
 │
 ├── notebooks/
 │   ├── compra/                    # EDA e modelagem — Ponta Grossa
@@ -143,6 +146,7 @@ previsao-precos-imoveis/
 │
 ├── streamlit_app/                 # Interface web (geocoding + POIs + predição)
 ├── monitoring/                    # Drift (Evidently), PostgreSQL, Prometheus, Grafana
+├── airflow/dags/                  # Monitoramento de hora em hora e retreino do aluguel
 ├── data/
 │   ├── raw/osm/                   # POIs do OpenStreetMap
 │   └── processed/                 # Dataset de compra + baseline de monitoramento
@@ -218,7 +222,7 @@ PG_DB=imoveis
 ### ⚡ Tudo de uma vez (Docker)
 
 ```bash
-./infra.sh up            # Postgres, MLflow, API, Streamlit, Metabase, Grafana, Prometheus
+./infra.sh up            # Postgres, MLflow, API, Streamlit, Metabase, Grafana, Prometheus, Airflow
 ./infra.sh migrar-dados  # 1ª vez: copia o banco atual para o Postgres do projeto
 ./infra.sh status        # estado e URLs
 ./infra.sh down
@@ -232,6 +236,7 @@ PG_DB=imoveis
 | Metabase | http://localhost:3003 |
 | Grafana | http://localhost:3002 |
 | Prometheus | http://localhost:9090 |
+| Airflow | http://localhost:8080 (admin / admin) |
 | PostgreSQL | localhost:5433 |
 
 Definições em [`docker-compose.yml`](docker-compose.yml); variáveis em `streamlit_app/.env`.
@@ -283,13 +288,15 @@ Sobe junto com `./infra.sh up` (exporter, Prometheus e Grafana).
 ### 5️⃣ Calcular Data Drift
 
 ```bash
-python monitoring/jobs/generate_baseline.py                  # baseline (primeira vez)
-python monitoring/jobs/run_data_drift.py                     # dados de produção → PostgreSQL
+python monitoring/jobs/generate_baseline.py                  # baseline do compra (primeira vez)
+python monitoring/jobs/generate_baseline_aluguel.py          # baseline do aluguel (treino do @champion)
+python monitoring/jobs/run_data_drift.py                     # compra + aluguel → PostgreSQL
+python monitoring/jobs/run_data_drift.py aluguel             # só um modelo
 DRIFT_SEED=1 python monitoring/jobs/run_data_drift.py        # seed inicial
 DRIFT_DRY_RUN=1 python monitoring/jobs/run_data_drift.py     # apenas imprime
 ```
 
-> Recomendação: agendar `run_data_drift.py` via cron ou Airflow a cada 6 h.
+> No Docker, a DAG `monitoramento_modelos` do Airflow roda o job de hora em hora.
 
 ---
 
@@ -340,7 +347,10 @@ DRIFT_DRY_RUN=1 python monitoring/jobs/run_data_drift.py     # apenas imprime
 
 ## 📊 Monitoramento
 
-O monitoramento usa **Wasserstein distance (normed)** para detectar drift nas features de entrada:
+Cada modelo tem dois tipos de métrica (configurados em [`monitoring/config/features.yaml`](monitoring/config/features.yaml)):
+
+- **Desempenho real**: MAPE, MAE e viés nas previsões em que o usuário informou o valor do anúncio (janela de 14 dias, só a versão em produção).
+- **Data drift**: **Wasserstein distance (normed)** entre as features de produção e as do treino:
 
 | Faixa | Interpretação |
 |---|---|
@@ -355,8 +365,31 @@ O monitoramento usa **Wasserstein distance (normed)** para detectar drift nas fe
 | `DatasetDriftDetected` | ≥ 50% das features com drift | Critical |
 | `MajorityFeaturesDrifted` | `share_drifted_columns > 0.5` | Critical |
 | `DriftJobStopped` | Sem coleta de métricas há mais de 2 h | Warning |
+| `ModelPerformanceDegraded` | MAPE acima do limite do modelo (≥ 10 previsões com valor real) | Critical |
 
-O dashboard **"Data Drift — Precificação de Imóveis"** é provisionado automaticamente no Grafana.
+Os alertas de drift só disparam com ≥ 30 amostras na janela. O dashboard **"Monitoramento de Modelos — Drift e Desempenho"** é provisionado no Grafana, com filtro por modelo.
+
+### 🔁 Retreino automático do aluguel (Airflow)
+
+A DAG [`retreino_aluguel`](airflow/dags/retreino_aluguel.py) roda todo dia às 3h e só segue se algum gatilho disparar:
+
+| Gatilho | Condição |
+|---|---|
+| Desempenho | MAPE real acima do limite (25%) com ≥ 10 previsões com valor real |
+| Drift | ≥ 50% das features com drift e ≥ 30 amostras |
+| Idade | último champion promovido há mais de 30 dias |
+| Manual | trigger com `forcar = true` |
+
+```
+avaliar_gatilhos → extrair_quintoandar → preparar_dados → treinar_challenger → avaliar_e_promover
+   (Postgres)         (API QuintoAndar)    (limpeza+POIs)    (Optuna + MLflow)   (champion × challenger)
+```
+
+- As etapas de ML rodam na imagem do projeto (`imoveis-app:dev`) via `DockerOperator`: treino e serving usam as mesmas bibliotecas.
+- O pipeline de dados ([`src/preprocessing/aluguel.py`](src/preprocessing/aluguel.py)) reproduz os notebooks 01/03/05 — validado com diferença zero nas 20 features.
+- A versão nova entra no Model Registry sem alias. Ela só vira **`@champion`** se tiver MAPE menor que o champion atual no mesmo holdout ([`promover_aluguel.py`](src/models/promover_aluguel.py)); toda decisão vai para a tabela `retreinos_modelo`.
+- Telas e monitoramento sempre usam o `@champion` (a tela troca de modelo em até 1 min, sem reiniciar). Ao promover, o baseline de drift é regenerado.
+- Após um retreino há 7 dias de carência. O compra não entra no retreino: os dados dele vêm de web scraping.
 
 ---
 
@@ -387,9 +420,10 @@ score = peso_dist × exp(−dist_mais_proximo / raio_decaimento) + peso_qtd × q
 
 - [x] Compra: modelo, API, Streamlit e monitoramento de drift
 - [x] Aluguel: EDA, inferência estatística, POIs e modelo no MLflow
-- [ ] Aluguel: interface Streamlit (com custo total estimado por bairro)
-- [ ] Aluguel: API, monitoramento e governança reaproveitando a stack existente
-- [ ] CI/CD (GitHub Actions), orquestração, Kubernetes, Terraform e teste A/B champion/challenger
+- [x] Aluguel: interface Streamlit (com custo total estimado por bairro)
+- [x] Aluguel: monitoramento de drift e desempenho reaproveitando a stack existente
+- [x] Orquestração (Airflow): monitoramento de hora em hora e retreino automático com champion/challenger
+- [ ] Cloud (Azure PostgreSQL via Terraform) e CI/CD (GitHub Actions)
 
 Detalhes em [`roadmap-projetos-portfolio.md`](roadmap-projetos-portfolio.md).
 

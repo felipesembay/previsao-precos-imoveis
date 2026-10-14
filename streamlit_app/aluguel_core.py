@@ -22,6 +22,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from src.features.aluguel import NUM_FEATURES, carregar_pois_sp  # noqa: E402
+from src.models.registro import cliente, versao_champion  # noqa: E402
 
 MODEL_NAME = "RentPriceModel_SP"
 OSM_DIR = os.path.join(ROOT, "data", "raw", "osm")
@@ -75,14 +76,21 @@ def geocode_google(endereco: str):
 # Recursos carregados uma vez
 # ==========================================
 @st.cache_resource
+def _carregar_versao(versao: str):
+    return mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/{versao}")
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _champion():
+    """Versão @champion (consultada a cada minuto: um retreino promovido entra sem reiniciar a tela)."""
+    v = versao_champion(MODEL_NAME, cliente())
+    return v.version, MlflowClient().get_run(v.run_id).data.metrics
+
+
 def carregar_modelo():
-    """Última versão registrada no MLflow + métricas do run que a gerou."""
-    mlflow.set_tracking_uri(f"file:{os.path.join(ROOT, 'mlruns')}")
-    client = MlflowClient()
-    versao = max(client.search_model_versions(f"name='{MODEL_NAME}'"), key=lambda v: int(v.version))
-    modelo = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/{versao.version}")
-    metricas = client.get_run(versao.run_id).data.metrics
-    return modelo, versao.version, metricas
+    """Modelo @champion do MLflow + métricas do run que o gerou."""
+    versao, metricas = _champion()
+    return _carregar_versao(versao), versao, metricas
 
 
 @st.cache_resource

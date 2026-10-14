@@ -1,145 +1,131 @@
-import requests
-import pandas as pd
+"""
+Extração de anúncios de aluguel do QuintoAndar (São Paulo) pela API de busca do site.
+Mesma lógica do notebook aluguel/quintoandar_extration.ipynb ("RODAR ESSE SCRIPT ABAIXO"):
+grade de viewports de 0,04° sobre a capital, 100 anúncios por página.
+
+Uso:
+    python -m src.scraping.quintoandar.client                 # salva em data/raw/quintoandar/
+    python -m src.scraping.quintoandar.client --saida X.parquet
+"""
+
+import argparse
+import datetime
+import os
 import time
+
+import numpy as np
+import pandas as pd
+import requests
 
 URL = "https://apigw.prod.quintoandar.com.br/house-listing-search/v2/search/list"
 
-headers = {
+HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Content-Type": "application/json",
-    "Origin": "https://www.quintoandar.com.br"
+    "Origin": "https://www.quintoandar.com.br",
 }
 
-all_data = []
+# Bounding box da região de São Paulo
+LAT_MIN, LAT_MAX = -23.85, -23.35
+LON_MIN, LON_MAX = -46.85, -46.35
+STEP = 0.04
+PAGE_SIZE = 100
+PAUSA_S = 0.7
 
-latitudes = [-23.8, -23.7, -23.6, -23.5, -23.4]
-longitudes = [-46.8, -46.7, -46.6, -46.5, -46.4]
-
-fields = [
-
-"id",
-"rent",
-"totalCost",
-"iptuPlusCondominium",
-"salePrice",
-
-"area",
-"bedrooms",
-"bathrooms",
-"parkingSpaces",
-"suites",
-
-"neighbourhood",
-"city",
-"regionName",
-"address",
-
-"type",
-"forRent",
-"forSale",
-
-"isFurnished",
-"isPrimaryMarket",
-
-"amenities",
-"installations",
-
-"listingTags",
-"categories",
-
-"visitStatus",
-
-"imageList",
-"coverImage",
-
-"yield",
-"yieldStrategy",
-
-"shortRentDescription",
-
-"activeSpecialConditions"
+FIELDS = [
+    "id", "rent", "totalCost", "iptuPlusCondominium", "salePrice",
+    "area", "bedrooms", "bathrooms", "parkingSpaces", "suites",
+    "neighbourhood", "city", "regionName", "address", "location",
+    "type", "forRent", "forSale",
+    "isFurnished", "isPrimaryMarket",
+    "amenities", "installations",
+    "listingTags", "categories",
+    "visitStatus",
+    "imageList", "coverImage",
+    "yield", "yieldStrategy",
+    "shortRentDescription",
+    "activeSpecialConditions",
 ]
 
-for i in range(len(latitudes)-1):
-    for j in range(len(longitudes)-1):
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+RAW_DIR = os.path.join(ROOT, "data", "raw", "quintoandar")
 
-        north = latitudes[i+1]
-        south = latitudes[i]
-        east = longitudes[j+1]
-        west = longitudes[j]
 
-        offset = 0
-        page_size = 50
+def _payload(north, south, east, west, offset):
+    return {
+        "context": {"mapShowing": True, "listShowing": True},
+        "filters": {
+            "businessContext": "RENT",
+            "location": {
+                "coordinate": {"lat": (north + south) / 2, "lng": (east + west) / 2},
+                "viewport": {"north": north, "south": south, "east": east, "west": west},
+                "countryCode": "BR",
+            },
+        },
+        "pagination": {"pageSize": PAGE_SIZE, "offset": offset},
+        "slug": "sao-paulo-sp-brasil",
+        "fields": FIELDS,
+    }
 
-        print(f"Área {i}-{j}")
 
-        while True:
+def _post(session, payload, tentativas=4):
+    """POST com retentativa para 429/5xx/erro de rede. Devolve None em erro definitivo (ex.: 400)."""
+    for i in range(tentativas):
+        try:
+            r = session.post(URL, headers=HEADERS, json=payload, timeout=30)
+        except requests.RequestException as exc:
+            print(f"   rede: {exc} (tentativa {i + 1})")
+        else:
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code != 429 and r.status_code < 500:
+                # 400 "Pagination exceeds the maximum limit": fim do viewport
+                return None
+            print(f"   HTTP {r.status_code} (tentativa {i + 1})")
+        time.sleep(2 ** (i + 1))
+    raise RuntimeError("API do QuintoAndar indisponível após várias tentativas")
 
-            payload = {
-                "context": {
-                    "mapShowing": True,
-                    "listShowing": True
-                },
 
-                "filters": {
-                    "businessContext": "RENT",
-                    "location": {
-                        "coordinate": {
-                            "lat": (north + south)/2,
-                            "lng": (east + west)/2
-                        },
-                        "viewport": {
-                            "north": north,
-                            "south": south,
-                            "east": east,
-                            "west": west
-                        },
-                        "countryCode": "BR"
-                    }
-                },
+def extrair() -> pd.DataFrame:
+    latitudes = np.arange(LAT_MIN, LAT_MAX, STEP)
+    longitudes = np.arange(LON_MIN, LON_MAX, STEP)
+    print(f"Total de áreas: {len(latitudes) * len(longitudes)}")
 
-                "pagination": {
-                    "pageSize": page_size,
-                    "offset": offset
-                },
+    all_data = []
+    with requests.Session() as session:
+        for lat in latitudes:
+            for lon in longitudes:
+                north, south, east, west = lat + STEP, lat, lon + STEP, lon
+                offset = 0
+                while True:
+                    data = _post(session, _payload(north, south, east, west, offset))
+                    listings = (data or {}).get("hits", {}).get("hits", [])
+                    if not listings:
+                        break
+                    for item in listings:
+                        source = item.get("_source", {})
+                        source["lat_viewport"] = (north + south) / 2
+                        source["lon_viewport"] = (east + west) / 2
+                        all_data.append(source)
+                    offset += PAGE_SIZE
+                    time.sleep(PAUSA_S)
+            print(f"   lat {lat:.2f}: {len(all_data):,} imóveis coletados")
 
-                "slug": "sao-paulo-sp-brasil",
+    df = pd.DataFrame(all_data).drop_duplicates(subset="id")
+    print(f"Total (sem duplicatas): {len(df):,}")
+    return df
 
-                "fields": fields
-            }
 
-            r = requests.post(URL, headers=headers, json=payload)
+def main(saida: str | None = None) -> str:
+    saida = saida or os.path.join(RAW_DIR, f"quintoandar_sp_{datetime.date.today():%Y%m%d}.parquet")
+    df = extrair()
+    os.makedirs(os.path.dirname(saida), exist_ok=True)
+    df.to_parquet(saida, index=False)
+    print(f"✅ {saida}")
+    return saida
 
-            if r.status_code != 200:
-                print("Erro:", r.text)
-                break
 
-            data = r.json()
-
-            listings = data.get("hits", {}).get("hits", [])
-
-            if not listings:
-                break
-
-            for item in listings:
-
-                source = item.get("_source", {})
-
-                source["lat_viewport"] = (north + south)/2
-                source["lon_viewport"] = (east + west)/2
-
-                all_data.append(source)
-
-            offset += page_size
-
-            print(len(all_data), "imóveis")
-
-            time.sleep(0.8)
-
-df = pd.DataFrame(all_data)
-
-df = df.drop_duplicates(subset="id")
-
-df.to_csv("quintoandar_sp_full.csv", index=False)
-
-print("Total:", len(df))
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--saida", help="caminho do parquet de saída")
+    main(parser.parse_args().saida)

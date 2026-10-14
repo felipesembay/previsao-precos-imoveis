@@ -1,7 +1,7 @@
 """
 run_data_drift.py
 =================
-Job agendado (serviço drift_job do docker-compose; depois Airflow) que, para cada
+Job agendado (DAG monitoramento_modelos do Airflow, de hora em hora) que, para cada
 modelo de monitoring/config/features.yaml (compra e aluguel):
   1. Carrega o baseline (features do treino, parquet)
   2. Carrega as features de produção dos últimos N dias do PostgreSQL
@@ -63,16 +63,13 @@ SALVAR = not DRY_RUN
 
 
 def versao_do_modelo(cfg: dict) -> str:
-    """Versão fixa do YAML ou a última registrada no MLflow (ex.: 'v1')."""
+    """Versão fixa do YAML ou a do @champion no MLflow (ex.: 'v1')."""
     if not cfg.get("mlflow_model"):
         return cfg.get("version", "unknown")
     try:
-        import mlflow
-        from mlflow import MlflowClient
+        from src.models.registro import versao_champion
 
-        mlflow.set_tracking_uri(f"file:{os.path.join(ROOT, 'mlruns')}")
-        versoes = MlflowClient().search_model_versions(f"name='{cfg['mlflow_model']}'")
-        return f"v{max(int(v.version) for v in versoes)}"
+        return f"v{versao_champion(cfg['mlflow_model']).version}"
     except Exception as exc:
         print(f"   ⚠️  Versão não encontrada no MLflow ({exc}); usando '{cfg.get('version', 'unknown')}'")
         return cfg.get("version", "unknown")
@@ -96,6 +93,9 @@ def calc_stats(series: pd.Series) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 def calcular_desempenho(cfg: dict, nome: str, versao: str):
     preds = load_janela(cfg["tabela_predicoes"], CURRENT_DAYS)
+    if cfg.get("mlflow_model") and not preds.empty:
+        # Só as previsões do champion atual: após um retreino, o erro do modelo antigo não conta
+        preds = preds[preds["versao_modelo"].astype(str) == versao.lstrip("v")]
     n_previsoes = len(preds)
     metricas = {"n_previsoes": float(n_previsoes), "mape_limite": float(cfg["mape_limite"])}
 

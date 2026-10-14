@@ -130,3 +130,28 @@ def save_distribution_stats(
                 )
             )
         conn.commit()
+
+
+def save_retreino(r: dict):
+    """Uma linha em retreinos_modelo por challenger avaliado (src/models/promover_aluguel.py)."""
+    colunas = ["modelo", "versao_challenger", "versao_champion", "mape_challenger", "mape_champion",
+               "mae_challenger", "mae_champion", "r2_challenger", "r2_champion", "n_teste",
+               "dataset", "motivo", "promovido"]
+    query = sql.SQL("INSERT INTO retreinos_modelo ({}) VALUES ({})").format(
+        sql.SQL(", ").join(map(sql.Identifier, colunas)),
+        sql.SQL(", ").join(sql.Placeholder() * len(colunas)),
+    )
+    valores = [float(r[c]) if isinstance(r.get(c), float) else r.get(c) for c in colunas]
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(query, valores)
+        conn.commit()
+
+
+def ultimo_retreino(modelo: str) -> dict | None:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM retreinos_modelo WHERE modelo = %s ORDER BY created_at DESC LIMIT 1", (modelo,)
+            )
+            return cursor.fetchone()

@@ -5,6 +5,10 @@ Mesma estrutura de src/models/train.py (projeto de compra) e do notebook aluguel
 Uso:
     cd /home/felipe/Projeto/Portfolio/Portfolio2/Regression_PriceHouse
     python -m src.models.train_aluguel
+    python -m src.models.train_aluguel --dados data/interim/X.parquet --trials 100   # retreino (Airflow)
+
+A versão nova entra no Model Registry sem alias; quem decide se ela vira
+@champion é src/models/promover_aluguel.py.
 
 O que o MLflow registra:
   - Parâmetros do Optuna (best_params)
@@ -13,6 +17,7 @@ O que o MLflow registra:
   - Model Registry: RentPriceModel_SP
 """
 
+import argparse
 import os
 import sys
 
@@ -106,10 +111,13 @@ def make_objective(X_train, X_test, y_train, y_test):
 # MAIN
 # ============================================================
 
-def main():
+def main(data_path: str = DATA_PATH, n_trials: int = N_TRIALS) -> str:
+    """Treina, registra no MLflow e devolve a versão criada no Model Registry."""
+    data_path = os.path.abspath(data_path)
+
     # ---- 1. Preparar dados ----
-    print("📦 Carregando e preparando dados...")
-    df = prepare_dataset(DATA_PATH)
+    print(f"📦 Carregando e preparando dados: {data_path}")
+    df = prepare_dataset(data_path)
 
     X = df[NUM_FEATURES + CAT_FEATURES]
     y = df[TARGET]
@@ -121,13 +129,13 @@ def main():
     print(f"   Treino: {len(X_train)} | Teste: {len(X_test)}")
 
     # ---- 2. Optuna ----
-    print(f"\n🔍 Iniciando otimização com Optuna ({N_TRIALS} trials)...")
+    print(f"\n🔍 Iniciando otimização com Optuna ({n_trials} trials)...")
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=RANDOM_STATE))
     study.optimize(
         make_objective(X_train, X_test, y_train, y_test),
-        n_trials=N_TRIALS,
+        n_trials=n_trials,
     )
 
     best_params = study.best_params
@@ -182,7 +190,9 @@ def main():
 
         # Parâmetros
         mlflow.log_params(best_params)
-        mlflow.log_param("n_trials_optuna", N_TRIALS)
+        mlflow.log_param("n_trials_optuna", n_trials)
+        # Relativo à raiz: o promotor e o baseline de drift refazem o mesmo split a partir dele
+        mlflow.log_param("data_path", os.path.relpath(data_path, _PROJECT_ROOT))
         mlflow.log_param("test_size", TEST_SIZE)
         mlflow.log_param("random_state", RANDOM_STATE)
         mlflow.log_param("num_features", NUM_FEATURES)
@@ -211,9 +221,15 @@ def main():
         run_id = run.info.run_id
         print(f"   Run ID: {run_id}")
 
-    print(f"\n✅ Modelo registrado como '{MODEL_NAME}' no MLflow!")
+    versao = mlflow.MlflowClient().search_model_versions(f"run_id='{run_id}'")[0].version
+    print(f"\n✅ Modelo registrado como '{MODEL_NAME}' v{versao} no MLflow!")
     print("   Para ver a UI: mlflow ui --port 5000")
+    return versao
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dados", default=DATA_PATH, help="parquet de features (saída do notebook 05 ou do pipeline)")
+    parser.add_argument("--trials", type=int, default=N_TRIALS, help="trials do Optuna")
+    args = parser.parse_args()
+    main(args.dados, args.trials)

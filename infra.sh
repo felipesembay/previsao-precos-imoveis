@@ -14,6 +14,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 export PWD="$(pwd)"
+# Containers do app e do Airflow rodam com o usuário do host; o Airflow precisa do grupo do socket do Docker
+export HOST_UID="$(id -u)" HOST_GID="$(id -g)" DOCKER_GID="$(stat -c %g /var/run/docker.sock)"
 ENV_FILE="streamlit_app/.env"
 COMPOSE=(docker-compose --env-file "$ENV_FILE" -f docker-compose.yml)
 
@@ -31,6 +33,7 @@ urls() {
   Metabase    http://localhost:${METABASE_PORT:-3003}
   Grafana     http://localhost:3002   (admin / admin)
   Prometheus  http://localhost:9090
+  Airflow     http://localhost:${AIRFLOW_PORT:-8080}   (admin / admin)
   Postgres    localhost:5433          (banco imoveis)
 EOF
 }
@@ -49,6 +52,10 @@ remover_containers_antigos() {
 case "${1:-}" in
     up)
         remover_containers_antigos
+        # Segredo do JWT entre os componentes do Airflow (gerado uma vez, fica só no .env local)
+        grep -q "^AIRFLOW_JWT_SECRET=" "$ENV_FILE" || echo "AIRFLOW_JWT_SECRET=$(openssl rand -hex 32)" >> "$ENV_FILE"
+        mkdir -p airflow/logs
+        docker rm -f imoveis_drift_job >/dev/null 2>&1 || true   # substituído pela DAG monitoramento_modelos
         "${COMPOSE[@]}" up -d --build
         urls
         ;;

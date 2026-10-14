@@ -18,7 +18,7 @@
 # grafana        http://localhost:3002        dashboards de drift
 # prometheus     http://localhost:9090        métricas e alertas
 # exporter       http://localhost:8007        métricas de drift → Prometheus
-# drift_job      —                            drift + desempenho a cada hora → Postgres
+# airflow        http://localhost:8080        DAGs de monitoramento (hora em hora) e retreino do aluguel
 # ═══════════════════════════════════════════════════════════════════════════════
 
 name: imoveis
@@ -29,6 +29,8 @@ x-app: &app
     dockerfile: docker/Dockerfile.app
   image: imoveis-app:dev
   restart: unless-stopped
+  # Usuário do host: arquivos gerados no repositório (cache, __pycache__) não ficam como root
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
   working_dir: ${PWD}
   volumes:
     - .:${PWD}
@@ -38,6 +40,7 @@ x-app: &app
     PG_HOST: postgres
     PG_PORT: 5432
     API_BASE_URL: http://api:8009
+    HOME: /tmp
   depends_on:
     postgres:
       condition: service_healthy
@@ -47,6 +50,42 @@ x-app: &app
 networks:
   imoveis:
     driver: bridge
+
+# Airflow 3 com LocalExecutor (sem Redis/Celery). Metadados no banco `airflow` do Postgres.
+# As tarefas de ML rodam em containers imoveis-app:dev via DockerOperator (socket do Docker).
+x-airflow: &airflow
+  image: apache/airflow:3.3.2-python3.12
+  restart: unless-stopped
+  user: "${HOST_UID:-1000}:0"
+  group_add:
+    - "${DOCKER_GID:-999}"
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${PG_USER}:${PG_PASSWORD}@postgres:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: America/Sao_Paulo
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?rode ./infra.sh up para gerar AIRFLOW_JWT_SECRET}
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Usados pelas DAGs (airflow/dags/comum.py)
+    PROJETO_DIR: ${PWD}
+    HOST_UID: ${HOST_UID:-1000}
+    HOST_GID: ${HOST_GID:-1000}
+    PG_USER: ${PG_USER}
+    PG_PASSWORD: ${PG_PASSWORD}
+    PG_DB: imoveis
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - /var/run/docker.sock:/var/run/docker.sock
+  depends_on: &airflow-depends
+    postgres:
+      condition: service_healthy
+    airflow-init:
+      condition: service_completed_successfully
+  networks:
+    - imoveis
 
 volumes:
   postgres_data:
@@ -117,16 +156,6 @@ services:
         condition: service_healthy
       api:
         condition: service_started
-
-  # ── Job de drift e desempenho (a cada hora; depois será uma DAG do Airflow) ──
-  drift_job:
-    <<: *app
-    container_name: imoveis_drift_job
-    command: >
-      sh -c "while true; do
-               python monitoring/jobs/run_data_drift.py;
-               sleep $${DRIFT_INTERVAL_SECONDS:-3600};
-             done"
 
   # ── Metabase (BI sobre o banco imoveis) ────────────────────────────────────
   metabase:
@@ -211,3 +240,45 @@ services:
       - prometheus
     networks:
       - imoveis
+
+  # ── Airflow (orquestração: monitoramento e retreino) ────────────────────────
+  airflow-init:
+    <<: *airflow
+    restart: "no"
+    command: version
+    environment:
+      <<: *airflow-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  airflow-apiserver:
+    <<: *airflow
+    container_name: imoveis_airflow_api
+    command: api-server
+    ports:
+      - "${AIRFLOW_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-scheduler:
+    <<: *airflow
+    container_name: imoveis_airflow_scheduler
+    command: scheduler
+    depends_on:
+      <<: *airflow-depends
+      airflow-apiserver:
+        condition: service_healthy
+
+  airflow-dag-processor:
+    <<: *airflow
+    container_name: imoveis_airflow_dag_processor
+    command: dag-processor
