@@ -8,7 +8,8 @@ Roda todo dia e só segue adiante se algum gatilho disparar:
   - **manual**: trigger com `forcar = true`
 
 Depois de um retreino há 7 dias de carência, para não retreinar todo dia enquanto
-as métricas da janela ainda refletem o modelo antigo.
+as métricas da janela ainda refletem o modelo antigo (`respeitar_carencia = false`
+avalia os gatilhos mesmo assim — útil para testar).
 
 Fluxo: extrair (API QuintoAndar) → preparar (limpeza + POIs + features) →
 treinar (Optuna + MLflow, versão sem alias) → promover (champion × challenger
@@ -43,6 +44,8 @@ FEATURES = f"data/interim/aluguel_sp_features_{CARIMBO}.parquet"
     params={
         "forcar": Param(False, type="boolean", description="Retreina mesmo sem gatilho e ignora a carência"),
         "n_trials": Param(250, type="integer", minimum=1, description="Trials do Optuna"),
+        "respeitar_carencia": Param(True, type="boolean",
+                                    description="Desligue para avaliar os gatilhos durante a carência"),
     },
     tags=["retreino", "aluguel"],
     doc_md=__doc__,
@@ -52,13 +55,14 @@ def retreino_aluguel():
     @task.short_circuit
     def avaliar_gatilhos() -> str | bool:
         """Devolve os motivos do retreino (vão para retreinos_modelo) ou False para parar a DAG."""
-        if get_current_context()["params"]["forcar"]:
+        params = get_current_context()["params"]
+        if params["forcar"]:
             return "manual"
 
         ultimo = consultar(
             """SELECT EXTRACT(EPOCH FROM NOW() - created_at) / 86400 AS dias FROM retreinos_modelo
                WHERE modelo = %s ORDER BY created_at DESC LIMIT 1""", (MODELO,))
-        if ultimo and ultimo[0]["dias"] < CARENCIA_DIAS:
+        if ultimo and ultimo[0]["dias"] < CARENCIA_DIAS and params["respeitar_carencia"]:
             print(f"Último retreino há {ultimo[0]['dias']:.1f} dias (carência de {CARENCIA_DIAS}). Nada a fazer.")
             return False
 
