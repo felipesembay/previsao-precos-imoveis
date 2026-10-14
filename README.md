@@ -215,6 +215,29 @@ PG_DB=imoveis
 
 ## 🚀 Como Executar
 
+### ⚡ Tudo de uma vez (Docker)
+
+```bash
+./infra.sh up            # Postgres, MLflow, API, Streamlit, Metabase, Grafana, Prometheus
+./infra.sh migrar-dados  # 1ª vez: copia o banco atual para o Postgres do projeto
+./infra.sh status        # estado e URLs
+./infra.sh down
+```
+
+| Serviço | URL |
+|---|---|
+| Streamlit | http://localhost:8502 |
+| API (compra) | http://localhost:8009/docs |
+| MLflow | http://localhost:5000 |
+| Metabase | http://localhost:3003 |
+| Grafana | http://localhost:3002 |
+| Prometheus | http://localhost:9090 |
+| PostgreSQL | localhost:5433 |
+
+Definições em [`docker-compose.yml`](docker-compose.yml); variáveis em `streamlit_app/.env`.
+
+### Serviço a serviço (sem Docker)
+
 > **Pré-requisito:** `conda activate regression`, a partir da raiz do projeto.
 
 ### 1️⃣ Treinar e registrar os modelos (MLflow)
@@ -247,12 +270,9 @@ streamlit run batch_app.py   # predição em lote
 
 O app executa o pipeline em tempo real: endereço → geocoding → POIs → scores → predição via API.
 
-### 4️⃣ Stack de Monitoramento (Docker)
+### 4️⃣ Stack de Monitoramento
 
-```bash
-cd monitoring/docker
-docker-compose up -d
-```
+Sobe junto com `./infra.sh up` (exporter, Prometheus e Grafana).
 
 | Serviço | URL |
 |---|---|

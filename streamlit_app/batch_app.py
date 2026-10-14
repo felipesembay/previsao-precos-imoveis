@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from db import get_connection as _pg_connection
 from db import salvar_lote_compra
 
-from api import prever_precos_lote
+from api import API_HEALTH_URL, prever_precos_lote
 
 try:
     import osmnx as ox
@@ -645,7 +645,7 @@ with st.sidebar:
     st.code("preco, rua, endereco, quartos,\nbanheiros, area_m2, cidade, estado", language="text")
     st.markdown("---")
     try:
-        r = requests.get("http://localhost:8009/health", timeout=2)
+        r = requests.get(API_HEALTH_URL, timeout=2)
         st.success(f"✅ API: {r.json().get('status', 'ok')}")
     except Exception:
         st.error("❌ API offline — inicie com:\n`uvicorn api.main:app --port 8009`")

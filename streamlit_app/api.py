@@ -1,7 +1,12 @@
+import os
+
 import requests
 
-API_URL = "http://localhost:8009/predict"
-API_BATCH_URL = "http://localhost:8009/predict_batch"
+# No docker-compose: API_BASE_URL=http://api:8009. Fora do Docker: localhost.
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8009")
+API_URL = f"{API_BASE_URL}/predict"
+API_BATCH_URL = f"{API_BASE_URL}/predict_batch"
+API_HEALTH_URL = f"{API_BASE_URL}/health"
 
 
 def prever_preco(payload):

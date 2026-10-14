@@ -1,0 +1,202 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Infraestrutura local completa — previsão de preços de imóveis (compra + aluguel)
+#
+#   ./infra.sh up        sobe tudo        ./infra.sh status   estado e URLs
+#   ./infra.sh down      para tudo        ./infra.sh logs X   logs de um serviço
+#
+# Portas 8502/3003 evitam conflito com o projeto RAG (8501/3000); mude com STREAMLIT_PORT/METABASE_PORT.
+# Variáveis (PG_USER, PG_PASSWORD, GEOCODING_MAPS...) vêm de streamlit_app/.env
+# (o infra.sh passa --env-file). O código é montado no mesmo caminho absoluto do host
+# para os caminhos gravados em mlruns/ continuarem válidos dentro dos containers.
+#
+# Serviço        URL                          Função
+# postgres       localhost:5433               banco `imoveis` (+ metabase, airflow)
+# mlflow         http://localhost:5000        experimentos e Model Registry
+# api            http://localhost:8009/docs   FastAPI do modelo de compra
+# streamlit      http://localhost:8502        telas de compra e aluguel
+# metabase       http://localhost:3003        análises/BI sobre as previsões
+# grafana        http://localhost:3002        dashboards de drift
+# prometheus     http://localhost:9090        métricas e alertas
+# exporter       http://localhost:8007        métricas de drift → Prometheus
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: imoveis
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.app
+  image: imoveis-app:dev
+  restart: unless-stopped
+  working_dir: ${PWD}
+  volumes:
+    - .:${PWD}
+  env_file:
+    - streamlit_app/.env
+  environment:
+    PG_HOST: postgres
+    PG_PORT: 5432
+    API_BASE_URL: http://api:8009
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - imoveis
+
+networks:
+  imoveis:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  metabase_plugins:
+  prometheus_data:
+  grafana_data:
+
+services:
+
+  # ── Banco de dados ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: imoveis_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:?defina PG_USER em streamlit_app/.env}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?defina PG_PASSWORD em streamlit_app/.env}
+      POSTGRES_DB: imoveis
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init/01_bancos.sql:/docker-entrypoint-initdb.d/01_bancos.sql:ro
+      - ./streamlit_app/db/schema_postgres.sql:/docker-entrypoint-initdb.d/02_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d imoveis"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - imoveis
+
+  # ── MLflow (tracking + Model Registry, store em arquivos ./mlruns) ──────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.9.0
+    container_name: imoveis_mlflow
+    restart: unless-stopped
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri file://${PWD}/mlruns
+    volumes:
+      - ./mlruns:${PWD}/mlruns
+    ports:
+      - "5000:5000"
+    networks:
+      - imoveis
+
+  # ── API do modelo de compra ────────────────────────────────────────────────
+  api:
+    <<: *app
+    container_name: imoveis_api
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8009
+    ports:
+      - "8009:8009"
+
+  # ── Telas (compra + aluguel) ───────────────────────────────────────────────
+  streamlit:
+    <<: *app
+    container_name: imoveis_streamlit
+    command: >
+      streamlit run streamlit_app/main.py
+      --server.address 0.0.0.0 --server.port 8501 --server.headless true
+    ports:
+      - "${STREAMLIT_PORT:-8502}:8501"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  # ── Metabase (BI sobre o banco imoveis) ────────────────────────────────────
+  metabase:
+    image: metabase/metabase:v0.56.4
+    container_name: imoveis_metabase
+    restart: unless-stopped
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase
+      MB_DB_PORT: 5432
+      MB_DB_USER: ${PG_USER}
+      MB_DB_PASS: ${PG_PASSWORD}
+      MB_DB_HOST: postgres
+    volumes:
+      - metabase_plugins:/plugins
+    ports:
+      - "${METABASE_PORT:-3003}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - imoveis
+
+  # ── Monitoramento de drift ─────────────────────────────────────────────────
+  prometheus_exporter:
+    build:
+      context: .
+      dockerfile: monitoring/docker/Dockerfile.exporter
+    container_name: drift_exporter
+    restart: unless-stopped
+    env_file:
+      - streamlit_app/.env
+    environment:
+      PG_HOST: postgres
+      PG_PORT: 5432
+      EXPORTER_PORT: 8007
+      EXPORTER_POLL_SECONDS: 60
+    ports:
+      - "8007:8007"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - imoveis
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/docker/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    depends_on:
+      - prometheus_exporter
+    networks:
+      - imoveis
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SMTP_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3002:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - imoveis
