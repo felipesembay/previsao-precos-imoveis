@@ -15,12 +15,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pymysql
 import streamlit as st
 from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(__file__))
-from config import DB_CONFIG
+from db import get_connection as _pg_connection
 
 try:
     import osmnx as ox
@@ -120,10 +119,11 @@ st.markdown("""
 
 
 # ─────────────────────────────────────────────────────────────
-# MySQL helpers
+# Banco (PostgreSQL) helpers
 # ─────────────────────────────────────────────────────────────
 def get_connection():
-    return pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
+    """PostgreSQL (PG_* no .env), linhas como dict — mesmo comportamento do antigo DictCursor."""
+    return _pg_connection(dict_rows=True)
 
 
 def salvar_pois_db(pois_list: list, cidade: str, estado: str, substituir: bool = True):
@@ -141,7 +141,7 @@ def salvar_pois_db(pois_list: list, cidade: str, estado: str, substituir: bool =
                     (cidade, tipo),
                 )
         cursor.executemany(
-            "INSERT IGNORE INTO pois (nome, tipo_poi, latitude, longitude, cidade, estado, fonte) "
+            "INSERT INTO pois (nome, tipo_poi, latitude, longitude, cidade, estado, fonte) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s)",
             [
                 (
@@ -174,7 +174,7 @@ def listar_cidades_db():
             estado,
             COUNT(*) AS total_pois,
             COUNT(DISTINCT tipo_poi) AS tipos_distintos,
-            GROUP_CONCAT(DISTINCT tipo_poi ORDER BY tipo_poi SEPARATOR ', ') AS tipos,
+            STRING_AGG(DISTINCT tipo_poi, ', ' ORDER BY tipo_poi) AS tipos,
             MAX(created_at) AS ultima_atualizacao
         FROM pois
         GROUP BY cidade, estado

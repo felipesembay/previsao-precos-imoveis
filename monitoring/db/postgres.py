@@ -1,43 +1,50 @@
 import os
-from datetime import datetime, timedelta
 
 import pandas as pd
-import pymysql
+import psycopg
+from dotenv import load_dotenv
+from psycopg.rows import dict_row
 
-MYSQL_CONFIG = {
-    "host": os.getenv("MYSQL_HOST", "localhost"),
-    "user": os.getenv("MYSQL_USER", "root"),
-    "password": os.getenv("MYSQL_PASSWORD", "airflow"),
-    "database": os.getenv("MYSQL_DATABASE", "imoveis"),
-    "port": int(os.getenv("MYSQL_PORT", 3306))
+# Execução local: lê PG_* do mesmo .env das telas. No Docker, as variáveis vêm do compose.
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+load_dotenv(os.path.join(_ROOT, "streamlit_app", ".env"))
+
+PG_CONFIG = {
+    "host": os.getenv("PG_HOST", "localhost"),
+    "user": os.getenv("PG_USER", "postgres"),
+    "password": os.getenv("PG_PASSWORD", ""),
+    "dbname": os.getenv("PG_DB", "imoveis"),
+    "port": int(os.getenv("PG_PORT", 5432)),
 }
 
 
 def get_connection():
-    return pymysql.connect(
-        cursorclass=pymysql.cursors.DictCursor,
-        **MYSQL_CONFIG
-    )
+    return psycopg.connect(row_factory=dict_row, **PG_CONFIG)
+
+
+def _read_sql(query: str, params=None) -> pd.DataFrame:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(query, params)
+            return pd.DataFrame(cursor.fetchall())
 
 
 def load_baseline_data(baseline_days: int) -> pd.DataFrame:
-    query = f"""
+    query = """
         SELECT *
         FROM predicoes
-        WHERE created_at < NOW() - INTERVAL {baseline_days} DAY
+        WHERE created_at < NOW() - make_interval(days => %s)
     """
-    with get_connection() as conn:
-        return pd.read_sql(query, conn)
+    return _read_sql(query, (int(baseline_days),))
 
 
 def load_current_data(current_days: int) -> pd.DataFrame:
-    query = f"""
+    query = """
         SELECT *
         FROM predicoes
-        WHERE created_at >= NOW() - INTERVAL {current_days} DAY
+        WHERE created_at >= NOW() - make_interval(days => %s)
     """
-    with get_connection() as conn:
-        return pd.read_sql(query, conn)
+    return _read_sql(query, (int(current_days),))
 
 
 def save_metric(
@@ -65,7 +72,7 @@ def save_metric(
                 query,
                 (
                     metric_name,
-                    metric_value,
+                    float(metric_value),
                     feature_name,
                     metric_type,
                     modelo,
@@ -84,7 +91,7 @@ def save_distribution_stats(
 ):
     """
     Salva estatísticas descritivas de uma feature.
-    
+
     Args:
         feature_name: nome da feature
         dataset_type: 'baseline' ou 'production'
@@ -109,6 +116,9 @@ def save_distribution_stats(
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
+    def _num(v):
+        return None if v is None else float(v)
+
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -116,17 +126,16 @@ def save_distribution_stats(
                 (
                     feature_name,
                     dataset_type,
-                    stats.get('mean'),
-                    stats.get('std'),
-                    stats.get('min'),
-                    stats.get('max'),
-                    stats.get('p25'),
-                    stats.get('p50'),
-                    stats.get('p75'),
-                    stats.get('count'),
+                    _num(stats.get('mean')),
+                    _num(stats.get('std')),
+                    _num(stats.get('min')),
+                    _num(stats.get('max')),
+                    _num(stats.get('p25')),
+                    _num(stats.get('p50')),
+                    _num(stats.get('p75')),
+                    None if stats.get('count') is None else int(stats.get('count')),
                     modelo,
                     versao_modelo
                 )
             )
-        conn.commit()
         conn.commit()

@@ -2,36 +2,18 @@
 networks:
   monitoring:
     driver: bridge
+  # Rede do container PostgreSQL (projeto datastacktrendsanalyzer). No Azure, troque PG_HOST e remova esta rede.
+  postgres_externo:
+    external: true
+    name: datastacktrendsanalyzer_default
 
 # ─── Volumes persistentes ─────────────────────────────────────────────────────
 volumes:
-  mysql_data:
   prometheus_data:
   grafana_data:
 
 # ─── Serviços ─────────────────────────────────────────────────────────────────
 services:
-
-  # ── MySQL ──────────────────────────────────────────────────────────────────
-  mysql:
-    image: mysql:8.0
-    container_name: imoveis_mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: airflow
-      MYSQL_DATABASE: imoveis
-    ports:
-      - "3307:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./../../monitoring/db/conf.sql:/docker-entrypoint-initdb.d/conf.sql:ro
-    networks:
-      - monitoring
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pairflow"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   # ── Prometheus Exporter (Python) ───────────────────────────────────────────
   prometheus_exporter:
@@ -40,21 +22,19 @@ services:
       dockerfile: monitoring/docker/Dockerfile.exporter
     container_name: drift_exporter
     restart: unless-stopped
+    # PG_USER, PG_PASSWORD e PG_DB vêm do .env (sem senha no YAML)
+    env_file:
+      - ../../streamlit_app/.env
     environment:
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
-      MYSQL_USER: root
-      MYSQL_PASSWORD: airflow
-      MYSQL_DATABASE: imoveis
+      PG_HOST: datastacktrendsanalyzer-postgres-1   # nome do container na rede postgres_externo
+      PG_PORT: 5432
       EXPORTER_PORT: 8007
       EXPORTER_POLL_SECONDS: 60
     ports:
       - "8007:8007"
-    depends_on:
-      mysql:
-        condition: service_healthy
     networks:
       - monitoring
+      - postgres_externo
 
   # ── Prometheus ─────────────────────────────────────────────────────────────
   prometheus:

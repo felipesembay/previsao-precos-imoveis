@@ -22,10 +22,9 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.insert(0, ROOT)
 
-import pymysql
 from prometheus_client import Gauge, start_http_server
 
-from monitoring.db.mysql import MYSQL_CONFIG
+from monitoring.db.postgres import get_connection as _pg_connection
 
 # ─── Configurações ────────────────────────────────────────────────────────────
 PORT           = int(os.getenv("EXPORTER_PORT", 8007))
@@ -95,7 +94,7 @@ distribution_max_gauge = Gauge(
 
 # ─── Lógica de coleta ─────────────────────────────────────────────────────────
 def _get_connection():
-    return pymysql.connect(cursorclass=pymysql.cursors.DictCursor, **MYSQL_CONFIG)
+    return _pg_connection()   # PostgreSQL, linhas como dict
 
 
 def collect_and_expose() -> None:
@@ -228,7 +227,7 @@ def collect_and_expose() -> None:
             log.error("Erro ao coletar estatísticas de distribuição: %s", exc_dist)
 
     except Exception as exc:
-        log.error("Erro ao coletar métricas do MySQL: %s", exc)
+        log.error("Erro ao coletar métricas do PostgreSQL: %s", exc)
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────

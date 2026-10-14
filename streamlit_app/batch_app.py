@@ -6,25 +6,25 @@ Suporta dois formatos:
 Pipeline: Upload → Tratamento → Geocoding → POIs por cidade → Scores → Predição → Banco
 """
 
+import json
 import os
 import re
 import sys
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 
 import numpy as np
 import pandas as pd
-import pymysql
 import requests
 import streamlit as st
 from dotenv import load_dotenv
 from sklearn.neighbors import BallTree
 
 sys.path.insert(0, os.path.dirname(__file__))
-from config import DB_CONFIG
-from db import salvar_features_monitoramento, salvar_predicao
+from db import get_connection as _pg_connection
+from db import salvar_lote_compra
 
-from api import prever_preco
+from api import prever_precos_lote
 
 try:
     import osmnx as ox
@@ -48,10 +48,11 @@ GOOGLE_API_KEY = os.getenv("GEOCODING_MAPS")
 
 
 # ─────────────────────────────────────────────────────────────
-# MySQL
+# Banco (PostgreSQL)
 # ─────────────────────────────────────────────────────────────
 def get_connection():
-    return pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
+    """PostgreSQL (PG_* no .env), linhas como dict — mesmo comportamento do antigo DictCursor."""
+    return _pg_connection(dict_rows=True)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -246,7 +247,24 @@ def tratar_generico(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────
 # GEOCODING — Google Maps
 # ─────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner=False)
+CACHE_GEO_PATH = os.path.join(os.path.dirname(__file__), "..", "cache", "geocoding", "compra_google_cache.json")
+
+
+def carregar_cache_geo() -> dict:
+    """Endereços já geocodificados em execuções anteriores (evita pagar o Google de novo)."""
+    try:
+        with open(CACHE_GEO_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def salvar_cache_geo(cache: dict):
+    os.makedirs(os.path.dirname(CACHE_GEO_PATH), exist_ok=True)
+    with open(CACHE_GEO_PATH, "w", encoding="utf-8") as f:
+        json.dump(cache, f, ensure_ascii=False)
+
+
 def geocode_google(endereco: str):
     if not GOOGLE_API_KEY:
         return None
@@ -334,7 +352,7 @@ def salvar_pois_db(pois_list: list, cidade: str, estado: str):
     for tipo in tipos:
         cursor.execute("DELETE FROM pois WHERE cidade = %s AND tipo_poi = %s", (cidade, tipo))
     cursor.executemany(
-        "INSERT IGNORE INTO pois (nome, tipo_poi, latitude, longitude, cidade, estado, fonte) "
+        "INSERT INTO pois (nome, tipo_poi, latitude, longitude, cidade, estado, fonte) "
         "VALUES (%s,%s,%s,%s,%s,%s,'osm')",
         [(p["nome"], p["tipo_poi"], p["lat"], p["lng"], cidade, estado) for p in pois_list],
     )
@@ -445,13 +463,21 @@ def rodar_pipeline(df_trat: pd.DataFrame, salvar_db: bool,
 
     # ── ETAPA 1: GEOCODING ────────────────────────────────────
     status_text.markdown("**[1/4] Geocodificando endereços…**")
-    cache_geo = {}
-    for i, row in df_trat.iterrows():
-        end_geo = row["endereco_geo"]
-        if end_geo not in cache_geo:
-            cache_geo[end_geo] = geocode_google(end_geo)
-            time.sleep(0.05)
-        progress_bar.progress(int((i + 1) / total * 25), text=f"Geocoding {i+1}/{total}")
+    cache_geo = carregar_cache_geo()
+    pendentes = [e for e in df_trat["endereco_geo"].unique() if e not in cache_geo]
+    if len(pendentes) < df_trat["endereco_geo"].nunique():
+        log_container.caption(f"   ♻️ {df_trat['endereco_geo'].nunique() - len(pendentes)} endereço(s) já estavam no cache")
+
+    # Chamadas ao Google em paralelo (8 por vez), em vez de uma a uma com pausa
+    if pendentes:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futuros = {pool.submit(geocode_google, e): e for e in pendentes}
+            for n, fut in enumerate(as_completed(futuros), start=1):
+                geo = fut.result()
+                if geo is not None:          # não guarda falhas: tenta de novo na próxima execução
+                    cache_geo[futuros[fut]] = geo
+                progress_bar.progress(int(n / len(pendentes) * 25), text=f"Geocoding {n}/{len(pendentes)}")
+        salvar_cache_geo(cache_geo)
 
     df_trat["_geo"] = df_trat["endereco_geo"].map(cache_geo)
     sem_geo = df_trat["_geo"].isna().sum()
@@ -502,30 +528,34 @@ def rodar_pipeline(df_trat: pd.DataFrame, salvar_db: bool,
 
     # ── ETAPA 4: PREDIÇÃO ─────────────────────────────────────
     status_text.markdown("**[4/4] Realizando predições…**")
-    for i, row in df_trat.iterrows():
-        payload = {
-            "area_m2":              float(row["area_m2"]),
-            "quartos":              int(row["quartos"]),
-            "banheiros":            int(row["banheiros"]),
-            "vagas_garagem":        int(row["vagas_garagem"]),
-            "tipo_imovel_cat":      row["tipo_imovel_cat"],
-            "is_sobrado":           int(row["is_sobrado"]),
-            "score_escola_privada": float(row["score_escola_privada"]),
-            "score_escola_publica": float(row["score_escola_publica"]),
-            "score_hospitais":      float(row["score_hospitais"]),
-            "score_mercado":        float(row["score_mercado"]),
-            "score_farmacia":       float(row["score_farmacia"]),
-            "score_parque":         float(row["score_parque"]),
-            "score_seguranca":      float(row["score_seguranca"]),
-        }
-        preco_predito, modelo, versao = None, "N/A", "N/A"
-        try:
-            resp          = prever_preco(payload)
-            preco_predito = resp.get("preco_estimado")
-            modelo        = resp.get("modelo", "N/A")
-            versao        = resp.get("versao", "N/A")
-        except Exception as e:
-            erros.append({"linha": i + 1, "endereco": row.get("endereco_geo", ""), "erro": str(e)})
+    payloads = [{
+        "area_m2":              float(row["area_m2"]),
+        "quartos":              int(row["quartos"]),
+        "banheiros":            int(row["banheiros"]),
+        "vagas_garagem":        int(row["vagas_garagem"]),
+        "tipo_imovel_cat":      row["tipo_imovel_cat"],
+        "is_sobrado":           int(row["is_sobrado"]),
+        "score_escola_privada": float(row["score_escola_privada"]),
+        "score_escola_publica": float(row["score_escola_publica"]),
+        "score_hospitais":      float(row["score_hospitais"]),
+        "score_mercado":        float(row["score_mercado"]),
+        "score_farmacia":       float(row["score_farmacia"]),
+        "score_parque":         float(row["score_parque"]),
+        "score_seguranca":      float(row["score_seguranca"]),
+    } for _, row in df_trat.iterrows()]
+
+    # Uma requisição para o lote inteiro (antes: uma por imóvel)
+    try:
+        previsoes = prever_precos_lote(payloads)
+    except Exception as e:
+        previsoes = [None] * len(payloads)
+        erros.append({"linha": "todas", "endereco": "", "erro": f"API: {e}"})
+    progress_bar.progress(90, text="Predições concluídas")
+
+    modelo, versao = "RealEstatePriceModel", "2.0.0"
+    itens_db = []
+    for (i, row), payload, prev in zip(df_trat.iterrows(), payloads, previsoes):
+        preco_predito = prev["preco_estimado"] if prev else None
 
         preco_anuncio  = row.get("preco_anuncio")
         nan_anuncio    = preco_anuncio is None or (
@@ -534,27 +564,22 @@ def rodar_pipeline(df_trat: pd.DataFrame, salvar_db: bool,
         erro_abs, erro_pct = None, None
         if preco_predito and not nan_anuncio and float(preco_anuncio) > 0:
             erro_abs = abs(preco_predito - float(preco_anuncio))
-            erro_pct = erro_abs / float(preco_anuncio) * 100
+            erro_pct = erro_abs / float(preco_anuncio)      # fração, igual à tela individual
 
-        predicao_id = None
         if salvar_db and preco_predito:
-            dados_db = {
-                **payload,
-                "endereco":     row.get("endereco_fmt") or row.get("endereco_geo", ""),
-                "preco_anuncio": float(preco_anuncio) if not nan_anuncio else None,
-            }
-            try:
-                predicao_id = salvar_predicao(dados_db, preco_predito, modelo, versao,
-                                               erro_abs, erro_pct)
-                salvar_features_monitoramento(predicao_id, float(row["area_m2"]), {
-                    k: float(row[k]) for k in [
-                        "score_escola_privada", "score_escola_publica", "score_farmacia",
-                        "score_hospitais", "score_mercado", "score_parque", "score_seguranca",
-                    ]
-                })
-            except Exception as e:
-                erros.append({"linha": i + 1, "endereco": row.get("endereco_geo", ""),
-                              "erro": f"DB: {e}"})
+            itens_db.append({
+                "dados": {
+                    **payload,
+                    "endereco":      row.get("endereco_fmt") or row.get("endereco_geo", ""),
+                    "preco_anuncio": float(preco_anuncio) if not nan_anuncio else None,
+                },
+                "preco_predito": preco_predito, "modelo": modelo, "versao": versao,
+                "erro_abs": erro_abs, "erro_pct": erro_pct,
+                "scores": {k: float(row[k]) for k in [
+                    "score_escola_privada", "score_escola_publica", "score_farmacia",
+                    "score_hospitais", "score_mercado", "score_parque", "score_seguranca",
+                ]},
+            })
 
         resultados.append({
             "endereco":             row.get("endereco_fmt") or row.get("endereco_geo", ""),
@@ -578,14 +603,23 @@ def rodar_pipeline(df_trat: pd.DataFrame, salvar_db: bool,
             "preco_anuncio":        float(preco_anuncio) if not nan_anuncio else None,
             "preco_predito":        preco_predito,
             "erro_absoluto":        round(erro_abs, 2) if erro_abs else None,
-            "erro_percentual_pct":  round(erro_pct, 2) if erro_pct else None,
+            "erro_percentual_pct":  round(erro_pct * 100, 2) if erro_pct else None,
             "modelo":               modelo,
             "versao":               versao,
-            "predicao_id":          predicao_id,
+            "predicao_id":          None,
         })
 
-        progress_bar.progress(75 + int((i + 1) / len(df_trat) * 25),
-                              text=f"Predição {i+1}/{len(df_trat)}")
+    # Banco: uma conexão e um commit para o lote
+    if itens_db:
+        status_text.markdown("**💾 Salvando no banco de dados…**")
+        try:
+            ids = iter(salvar_lote_compra(itens_db))
+            for r in resultados:
+                if r["preco_predito"]:
+                    r["predicao_id"] = next(ids)
+        except Exception as e:
+            erros.append({"linha": "todas", "endereco": "", "erro": f"DB: {e}"})
+    progress_bar.progress(100, text="Concluído")
 
     return pd.DataFrame(resultados), erros
 

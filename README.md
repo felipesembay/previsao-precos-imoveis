@@ -106,7 +106,7 @@ Versionamento (MLflow Model Registry)
         ├── API REST (FastAPI)
         └── Interface Web (Streamlit)
                 ↓
-        Banco de Dados (MySQL)
+        Banco de Dados (PostgreSQL)
                 ↓
         Monitoramento de Data Drift (Evidently)
                 ↓
@@ -142,7 +142,7 @@ previsao-precos-imoveis/
 │   └── aluguel/                   # 01–06: EDA, inferência, POIs, features, modelagem — São Paulo
 │
 ├── streamlit_app/                 # Interface web (geocoding + POIs + predição)
-├── monitoring/                    # Drift (Evidently), MySQL, Prometheus, Grafana
+├── monitoring/                    # Drift (Evidently), PostgreSQL, Prometheus, Grafana
 ├── data/
 │   ├── raw/osm/                   # POIs do OpenStreetMap
 │   └── processed/                 # Dataset de compra + baseline de monitoramento
@@ -170,7 +170,7 @@ previsao-precos-imoveis/
 | Versionamento | MLflow (tracking + model registry) |
 | API | FastAPI + Uvicorn |
 | Interface | Streamlit |
-| Banco de Dados | MySQL 8.0 |
+| Banco de Dados | PostgreSQL 16 (local) → Azure Database for PostgreSQL |
 | Monitoramento | Evidently 0.7.x |
 | Observabilidade | Prometheus + Grafana |
 | Containers | Docker + Docker Compose |
@@ -203,12 +203,12 @@ Crie o arquivo `.env` na raiz (e/ou em `streamlit_app/.env`):
 GEOCODING_MAPS=sua_chave_google_maps
 OPENCAGE_API_KEY=sua_chave_opencage
 
-# Banco de dados MySQL
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=senha_aqui
-DB_NAME=imoveis
+# Banco de dados PostgreSQL (esquema: streamlit_app/db/schema_postgres.sql)
+PG_HOST=localhost
+PG_PORT=5432
+PG_USER=postgres
+PG_PASSWORD=senha_aqui
+PG_DB=imoveis
 ```
 
 ---
@@ -259,14 +259,13 @@ docker-compose up -d
 | Grafana | [http://localhost:3002](http://localhost:3002) |
 | Prometheus | [http://localhost:9090](http://localhost:9090) |
 | Prometheus Exporter | [http://localhost:8007/metrics](http://localhost:8007/metrics) |
-| MySQL | localhost:3307 |
 
 ### 5️⃣ Calcular Data Drift
 
 ```bash
 python monitoring/jobs/generate_baseline.py                  # baseline (primeira vez)
-MYSQL_PORT=3307 python monitoring/jobs/run_data_drift.py     # dados de produção → MySQL
-MYSQL_PORT=3307 DRIFT_SEED=1 python monitoring/jobs/run_data_drift.py   # seed inicial
+python monitoring/jobs/run_data_drift.py                     # dados de produção → PostgreSQL
+DRIFT_SEED=1 python monitoring/jobs/run_data_drift.py        # seed inicial
 DRIFT_DRY_RUN=1 python monitoring/jobs/run_data_drift.py     # apenas imprime
 ```
 

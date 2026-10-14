@@ -88,6 +88,100 @@ def prepare_dataset(path) -> pd.DataFrame:
 
 
 # ============================================================
+# 0.1 POIs para inferência (mesma lógica do notebook 03)
+# ============================================================
+
+CRS_GEO, CRS_M = 4326, 31983  # WGS84 -> SIRGAS 2000 / UTM 23S (metros)
+
+# Caixa aproximada do município de São Paulo (notebook 01)
+LIMITES_SP = {"lat": (-24.01, -23.35), "lon": (-46.83, -46.36)}
+
+
+def dentro_de_sp(lat: float, lon: float) -> bool:
+    return LIMITES_SP["lat"][0] <= lat <= LIMITES_SP["lat"][1] and LIMITES_SP["lon"][0] <= lon <= LIMITES_SP["lon"][1]
+
+
+def _ler_osm(caminho):
+    import geopandas as gpd
+    from shapely import wkt
+
+    d = pd.read_csv(caminho, low_memory=False)
+    return gpd.GeoDataFrame(d, geometry=d["geometry"].map(wkt.loads), crs=CRS_GEO).to_crs(CRS_M)
+
+
+def _deduplicar(g, dist_m: float = 150):
+    """Remove o mesmo POI mapeado duas vezes: mesmo nome e centróides a menos de dist_m."""
+    g = g.copy()
+    g["_nome"] = g["name"].fillna("").str.lower().str.strip()
+    g["_cx"] = (g.geometry.centroid.x // dist_m).astype(int)
+    g["_cy"] = (g.geometry.centroid.y // dist_m).astype(int)
+    dup = (g["_nome"] != "") & g.duplicated(subset=["_nome", "_cx", "_cy"])
+    return g.loc[~dup].drop(columns=["_nome", "_cx", "_cy"])
+
+
+def carregar_pois_sp(osm_dir) -> dict:
+    """Lê os CSVs data/raw/osm/*_sp.csv e devolve {categoria: GeoDataFrame em metros}."""
+    from pathlib import Path
+
+    osm_dir = Path(osm_dir)
+    escolas = _ler_osm(osm_dir / "escolas_sp.csv")
+    mercados = _ler_osm(osm_dir / "mercados_sp.csv")
+    transporte = _ler_osm(osm_dir / "metro_sp.csv")
+    verdes = _ler_osm(osm_dir / "parques_sp.csv")
+    policia = _ler_osm(osm_dir / "policia_sp.csv")
+
+    verdes["area_ha"] = verdes.area / 1e4
+    eh_park = verdes["leisure"].astype(str).str.startswith("park")
+    estacao = transporte["railway"].isin(["station", "stop"])
+    eh_metro = (transporte["station"] == "subway") | (transporte["subway"] == "yes")
+
+    pois = {
+        "escola_publica": escolas[(escolas["amenity"] == "school") & (escolas["tipo_escola"] == "publica")],
+        "escola_privada": escolas[(escolas["amenity"] == "school") & (escolas["tipo_escola"] == "privada")],
+        "ensino_superior": escolas[escolas["amenity"].isin(["university", "college"])],
+        "hospital": _ler_osm(osm_dir / "hospitais_sp.csv"),
+        "farmacia": _ler_osm(osm_dir / "farmacia_sp.csv"),
+        "supermercado": mercados[mercados["shop"] == "supermarket"],
+        "conveniencia": mercados[mercados["shop"] == "convenience"],
+        "policia": policia[policia["amenity"] == "police"],
+        "metro": transporte[estacao & eh_metro],
+        "trem": transporte[estacao & ~eh_metro & (transporte["train"] == "yes")],
+        "parque": verdes[eh_park & (verdes["area_ha"] >= 1)],
+        "praca": verdes[(eh_park & (verdes["area_ha"] < 1)) | (verdes["leisure"] == "garden")],
+    }
+    return {c: _deduplicar(g)[["name", "geometry"]].reset_index(drop=True) for c, g in pois.items()}
+
+
+def features_poi_ponto(lat: float, lon: float, pois: dict) -> dict:
+    """dist_<cat> (m, até a borda do polígono), qtd_<cat>_500m e qtd_<cat>_1km para um ponto."""
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    ponto = gpd.GeoSeries([Point(lon, lat)], crs=CRS_GEO).to_crs(CRS_M).iloc[0]
+    out = {}
+    for cat, g in pois.items():
+        d = g.geometry.distance(ponto).to_numpy()
+        out[f"dist_{cat}"] = float(d.min())
+        out[f"qtd_{cat}_500m"] = int((d <= 500).sum())
+        out[f"qtd_{cat}_1km"] = int((d <= 1000).sum())
+    return out
+
+
+def montar_entrada_modelo(lat: float, lon: float, imovel: dict, pois: dict) -> pd.DataFrame:
+    """
+    Uma linha com NUM_FEATURES + CAT_FEATURES, calculada como no treino.
+    ``imovel``: type, area, bedrooms, bathrooms, suites, parkingSpaces, mobiliado,
+    am_ar_condicionado, inst_piscina, inst_academia, am_varanda.
+    """
+    linha = {**imovel, **features_poi_ponto(lat, lon, pois)}
+    linha["dist_centro_km"] = float(haversine_km(lat, lon, *CENTRO))
+    linha["dist_polo_km"] = float(min(haversine_km(lat, lon, *p) for p in POLOS.values()))
+    df = add_poi_scores(pd.DataFrame([linha]))
+    df["tipo_imovel_cat"] = df["type"].map(MAPA_TIPO)
+    return df
+
+
+# ============================================================
 # 1. Features determinísticas (linha a linha)
 # ============================================================
 

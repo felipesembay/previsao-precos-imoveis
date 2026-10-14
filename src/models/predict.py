@@ -81,6 +81,26 @@ def load_model(
 # Predição
 # ============================================================
 
+def _preparar_entrada(df_input: pd.DataFrame) -> pd.DataFrame:
+    """Garante as colunas esperadas pelo pipeline, na ordem do treino."""
+    df_input = df_input.copy()
+
+    # Garantias mínimas para novas features
+    if "is_sobrado" not in df_input.columns:
+        df_input["is_sobrado"] = 0
+
+    if "tipo_imovel_cat" not in df_input.columns:
+        df_input["tipo_imovel_cat"] = "outros"
+
+    features = NUM_FEATURES + CAT_FEATURES
+
+    for col in features:
+        if col not in df_input.columns:
+            df_input[col] = np.nan
+
+    return df_input[features]
+
+
 def predict(pipeline, data: dict) -> dict:
     """
     Recebe um dicionário com os dados de um imóvel e retorna
@@ -103,42 +123,18 @@ def predict(pipeline, data: dict) -> dict:
         "is_sobrado": 0
     }
     """
+    return predict_batch(pipeline, [data])[0]
 
-    df_input = pd.DataFrame([data])
 
-    # --------------------------------------------------------
-    # Garantias mínimas para novas features
-    # --------------------------------------------------------
+def predict_batch(pipeline, dados: list) -> list:
+    """Mesma lógica de `predict`, para vários imóveis numa única chamada ao modelo."""
+    df_input = _preparar_entrada(pd.DataFrame(dados))
+    log_precos = pipeline.predict(df_input)
 
-    if "is_sobrado" not in df_input.columns:
-        df_input["is_sobrado"] = 0
-
-    if "tipo_imovel_cat" not in df_input.columns:
-        df_input["tipo_imovel_cat"] = "outros"
-
-    # --------------------------------------------------------
-    # Garantir todas as colunas esperadas pelo pipeline
-    # --------------------------------------------------------
-
-    features = NUM_FEATURES + CAT_FEATURES
-
-    for col in features:
-        if col not in df_input.columns:
-            df_input[col] = np.nan
-
-    df_input = df_input[features]
-
-    # --------------------------------------------------------
-    # Predição
-    # --------------------------------------------------------
-
-    log_preco = pipeline.predict(df_input)[0]
-    preco = float(np.exp(log_preco))
-
-    return {
-        "log_preco": float(log_preco),
-        "preco_estimado": round(preco, 2),
-    }
+    return [
+        {"log_preco": float(lp), "preco_estimado": round(float(np.exp(lp)), 2)}
+        for lp in log_precos
+    ]
 
 
 # ============================================================

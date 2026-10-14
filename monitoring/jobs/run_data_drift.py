@@ -2,10 +2,10 @@
 run_data_drift.py
 =================
 Job agendado (cron / Airflow) que:
-  1. Carrega dados de referência (baseline parquet ou MySQL)
-  2. Carrega dados de produção recentes do MySQL
+  1. Carrega dados de referência (baseline parquet ou PostgreSQL)
+  2. Carrega dados de produção recentes do PostgreSQL
   3. Calcula Data Drift com Evidently 0.7.x
-  4. Persiste as métricas no MySQL
+  4. Persiste as métricas no PostgreSQL
   5. Salva relatório HTML para auditoria
 
 Escala de drift_score (Evidently 0.7.x usa Wasserstein distance normed):
@@ -17,7 +17,7 @@ Escala de drift_score (Evidently 0.7.x usa Wasserstein distance normed):
 Uso:
     python monitoring/jobs/run_data_drift.py
 
-Modo teste (sem MySQL):
+Modo teste (sem PostgreSQL):
     DRIFT_DRY_RUN=1 python monitoring/jobs/run_data_drift.py
 """
 
@@ -34,7 +34,7 @@ sys.path.insert(0, ROOT)
 from evidently import Dataset, Report
 from evidently.presets import DataDriftPreset
 
-from monitoring.db.mysql import (load_baseline_data, load_current_data,
+from monitoring.db.postgres import (load_baseline_data, load_current_data,
                                  save_distribution_stats, save_metric)
 
 # ── Configuração ──────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ NUM_FEATURES  = config["features"]["numerical"]
 WASSERSTEIN_THRESHOLD = config.get("drift", {}).get("wasserstein_threshold", 0.1)
 
 DRY_RUN  = os.getenv("DRIFT_DRY_RUN", "0") == "1"
-# DRIFT_SEED=1 → usa parquet para baseline E current, mas salva no MySQL
+# DRIFT_SEED=1 → usa parquet para baseline E current, mas salva no PostgreSQL
 # útil para popular o banco na primeira execução (sem dados de produção ainda)
 SEED_MODE = os.getenv("DRIFT_SEED", "0") == "1"
 
@@ -65,7 +65,7 @@ print("📂 Carregando dados de referência...")
 
 if DRY_RUN or SEED_MODE:
     import numpy as np
-    mode_label = "SEED (salva no MySQL)" if SEED_MODE else "DRY RUN (sem MySQL)"
+    mode_label = "SEED (salva no PostgreSQL)" if SEED_MODE else "DRY RUN (sem PostgreSQL)"
     print(f"   [{mode_label}] Parquet como referência + ruído leve como current.")
     _raw = pd.read_parquet(BASELINE_PARQUET)
     baseline_df = _raw[NUM_FEATURES].dropna()
@@ -75,7 +75,7 @@ if DRY_RUN or SEED_MODE:
 else:
     baseline_db = load_baseline_data(BASELINE_DAYS)
     if baseline_db.empty:
-        print("   ⚠️  Baseline MySQL vazio — usando parquet.")
+        print("   ⚠️  Baseline PostgreSQL vazio — usando parquet.")
         _raw = pd.read_parquet(BASELINE_PARQUET)
         baseline_df = _raw[NUM_FEATURES].dropna()
     else:
@@ -200,6 +200,6 @@ for feat, ds in sorted(all_drift_scores.items(), key=lambda x: -x[1]):
     print(f"{flag}{feat:<28} {ds:>18.4f}  {'YES' if feat in drifted_features else 'no'}")
 print("─────────────────────────────────────────────────────────────────")
 print(f"\nFeatures com drift ({len(drifted_features)}): {drifted_features}")
-mode_desc = "DRY_RUN (sem salvar)" if DRY_RUN else ("SEED (parquet → MySQL)" if SEED_MODE else "salvo no MySQL")
+mode_desc = "DRY_RUN (sem salvar)" if DRY_RUN else ("SEED (parquet → PostgreSQL)" if SEED_MODE else "salvo no PostgreSQL")
 print(f"\n✅ Data Drift {mode_desc} com sucesso.")
 print(f"\n✅ Data Drift {mode_desc} com sucesso.")

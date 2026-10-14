@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT_DIR)
 
-from src.models.predict import load_model, predict
+from src.models.predict import load_model, predict, predict_batch
 
 # ============================================================
 # Schema de entrada / saída
@@ -86,6 +86,16 @@ class PredictionOutput(BaseModel):
     preco_estimado: float = Field(description="Preço estimado em R$")
     log_preco: float = Field(description="Log do preço estimado")
     moeda: str = "BRL"
+
+
+class BatchInput(BaseModel):
+    """Vários imóveis numa única requisição."""
+
+    imoveis: list[ImovelInput] = Field(min_length=1, max_length=5000)
+
+
+class BatchOutput(BaseModel):
+    previsoes: list[PredictionOutput]
 
 
 class HealthOutput(BaseModel):
@@ -165,6 +175,23 @@ def predict_price(imovel: ImovelInput):
             preco_estimado=result["preco_estimado"],
             log_preco=result["log_preco"],
         )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/predict_batch", response_model=BatchOutput)
+def predict_price_batch(lote: BatchInput):
+    """Previsão em lote: uma chamada ao modelo para todos os imóveis (usada pelo batch_app)."""
+    if _model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Modelo não carregado. Treine primeiro com: python -m src.models.train",
+        )
+
+    try:
+        resultados = predict_batch(_model, [i.model_dump() for i in lote.imoveis])
+        return BatchOutput(previsoes=[PredictionOutput(**r) for r in resultados])
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

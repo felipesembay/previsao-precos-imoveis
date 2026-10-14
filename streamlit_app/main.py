@@ -5,6 +5,8 @@ Integra três módulos principais:
   1. Predição Individual (app2.py) - Análise de imóvel único
   2. Predição em Lote (batch_app.py) - Processamento de múltiplos imóveis
   3. Gerenciador de POIs (poi_manager.py) - Administração de pontos de interesse
+  4. Aluguel São Paulo (app_aluguel.py) - Previsão de aluguel na capital paulista
+  5. Aluguel em Lote (batch_app_aluguel.py) - Previsão de aluguel para vários imóveis
 """
 
 import os
@@ -13,7 +15,7 @@ import sys
 import streamlit as st
 
 # Adicionar diretório streamlit_app ao path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "streamlit_app"))
+sys.path.insert(0, os.path.dirname(__file__))
 
 # ==========================================
 # Configuração Global da Página
@@ -157,7 +159,9 @@ with st.sidebar:
         [
             "🏡 Predição Individual",
             "📦 Predição em Lote",
-            "📍 Gerenciador de POIs"
+            "📍 Gerenciador de POIs",
+            "🏙️ Aluguel — São Paulo",
+            "📦 Aluguel em Lote"
         ],
         label_visibility="collapsed"
     )
@@ -202,6 +206,26 @@ with st.sidebar:
         - Gerenciar cidades
         - Estatísticas completas
         """)
+    elif pagina_selecionada == "🏙️ Aluguel — São Paulo":
+        st.markdown("""
+        **Aluguel — São Paulo**
+        
+        Previsão de aluguel na capital:
+        - Geocoding automático
+        - POIs do OpenStreetMap
+        - Modelo versionado no MLflow
+        - Custo total estimado por bairro
+        """)
+    elif pagina_selecionada == "📦 Aluguel em Lote":
+        st.markdown("""
+        **Aluguel em Lote**
+        
+        Previsão de aluguel em massa:
+        - Template CSV para download
+        - Upload CSV/XLSX
+        - Exportação de resultados
+        - Salvamento no banco
+        """)
     
     st.markdown("---")
     
@@ -235,7 +259,7 @@ if pagina_selecionada == "🏡 Predição Individual":
     try:
         spec = importlib.util.spec_from_file_location(
             "app2_module",
-            os.path.join(os.path.dirname(__file__), "streamlit_app", "app2.py")
+            os.path.join(os.path.dirname(__file__), "app2.py")
         )
         app2_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(app2_module)
@@ -248,7 +272,7 @@ elif pagina_selecionada == "📦 Predição em Lote":
     try:
         spec = importlib.util.spec_from_file_location(
             "batch_app_module",
-            os.path.join(os.path.dirname(__file__), "streamlit_app", "batch_app.py")
+            os.path.join(os.path.dirname(__file__), "batch_app.py")
         )
         batch_app_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(batch_app_module)
@@ -261,7 +285,7 @@ elif pagina_selecionada == "📍 Gerenciador de POIs":
     try:
         spec = importlib.util.spec_from_file_location(
             "poi_manager_module",
-            os.path.join(os.path.dirname(__file__), "streamlit_app", "poi_manager.py")
+            os.path.join(os.path.dirname(__file__), "poi_manager.py")
         )
         poi_manager_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(poi_manager_module)
@@ -270,3 +294,28 @@ elif pagina_selecionada == "📍 Gerenciador de POIs":
         st.error(f"❌ Erro ao carregar módulo de Gerenciador de POIs: {str(e)}")
         st.exception(e)
 
+elif pagina_selecionada == "🏙️ Aluguel — São Paulo":
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "app_aluguel_module",
+            os.path.join(os.path.dirname(__file__), "app_aluguel.py")
+        )
+        app_aluguel_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(app_aluguel_module)
+        
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar módulo de Aluguel: {str(e)}")
+        st.exception(e)
+
+elif pagina_selecionada == "📦 Aluguel em Lote":
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "batch_app_aluguel_module",
+            os.path.join(os.path.dirname(__file__), "batch_app_aluguel.py")
+        )
+        batch_app_aluguel_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(batch_app_aluguel_module)
+        
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar módulo de Aluguel em Lote: {str(e)}")
+        st.exception(e)
