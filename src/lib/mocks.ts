@@ -62,7 +62,7 @@ function gerarPois(lat: number, lon: number, r: () => number): Poi[] {
       const dlon = (d * Math.sin(ang)) / (111320 * Math.cos((lat * Math.PI) / 180));
       out.push({
         categoria: cat,
-        nome: r() < 0.1 ? null : nomes[Math.floor(r() * nomes.length)],
+        nome: r() < 0.1 ? null : (nomes[Math.floor(r() * nomes.length)] ?? null),
         lat: lat + dlat,
         lon: lon + dlon,
         distancia_m: Math.round(d),
@@ -77,7 +77,7 @@ function localizar(endereco: string) {
   if (/erro|xxx/i.test(endereco)) throw new Error("Não foi possível localizar esse endereço. Verifique e tente novamente.");
   const h = hash(endereco.toLowerCase());
   const r = rng(h);
-  const reg = REGIOES_SP[h % REGIOES_SP.length];
+  const reg = REGIOES_SP[h % REGIOES_SP.length]!;
   const lat = reg.lat + (r() - 0.5) * 0.012;
   const lon = reg.lon + (r() - 0.5) * 0.012;
   return { reg, r, lat, lon };
@@ -135,8 +135,8 @@ const bool = (s: string | undefined) => /^(1|true|sim|s|yes)$/i.test((s ?? "").t
 export function preverLote(csv: string): LoteResponse {
   const lines = csv.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) throw new Error("O CSV não tem linhas de dados.");
-  const sep = lines[0].includes(";") ? ";" : ",";
-  const head = lines[0].split(sep).map((h) => h.trim().toLowerCase());
+  const sep = lines[0]!.includes(";") ? ";" : ",";
+  const head = lines[0]!.split(sep).map((h) => h.trim().toLowerCase());
   const linhas: LinhaLote[] = lines.slice(1).map((l) => {
     const c = l.split(sep);
     const g = (k: string) => c[head.indexOf(k)]?.trim();

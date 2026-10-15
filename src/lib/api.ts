@@ -15,7 +15,7 @@ export interface AluguelRequest {
   piscina: boolean;
   academia: boolean;
   varanda: boolean;
-  aluguel_anunciado?: number;
+  aluguel_anunciado?: number | undefined;
 }
 export interface Localizacao { lat: number; lon: number; endereco_formatado: string }
 export interface Poi { categoria: string; nome: string | null; lat: number; lon: number; distancia_m: number }
@@ -81,8 +81,8 @@ export interface InfraResponse {
   previsoes_total: number;
 }
 
-const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
-export const USE_MOCKS = (import.meta.env.VITE_USE_MOCKS ?? "true") !== "false";
+const BASE = (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://localhost:8000";
+export const USE_MOCKS = (import.meta.env["VITE_USE_MOCKS"] ?? "true") !== "false";
 
 const delay = <T,>(fn: () => T, ms = 600) =>
   new Promise<T>((resolve, reject) =>
