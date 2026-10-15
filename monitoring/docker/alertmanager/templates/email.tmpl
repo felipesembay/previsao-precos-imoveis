@@ -1,0 +1,20 @@
+{{ define "email.imoveis.html" }}
+<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">
+  <h2 style="margin:0 0 4px">{{ if eq .Status "firing" }}Alerta ativo{{ else }}Alerta resolvido{{ end }}: {{ .CommonLabels.alertname }}</h2>
+  <p style="margin:0 0 16px;color:#555">Modelo <b>{{ .CommonLabels.modelo }}</b> · {{ .Alerts | len }} alerta(s) · severidade {{ .CommonLabels.severity }}</p>
+  <table cellpadding="8" style="border-collapse:collapse;width:100%">
+    <tr style="background:#f0f0f0;text-align:left"><th>Status</th><th>Resumo</th><th>Detalhe</th><th>Desde (UTC)</th></tr>
+    {{ range .Alerts }}
+    <tr style="border-top:1px solid #ddd;vertical-align:top">
+      <td>{{ if eq .Status "firing" }}ativo{{ else }}resolvido{{ end }}</td>
+      <td>{{ .Annotations.summary }}</td>
+      <td>{{ .Annotations.description }}</td>
+      <td>{{ .StartsAt.Format "02/01 15:04" }}</td>
+    </tr>
+    {{ end }}
+  </table>
+  <p style="margin-top:16px;color:#555;font-size:13px">
+    Grafana: http://localhost:3002/d/drift-imoveis-v1 · Airflow (retreino): http://localhost:8080 · Alertmanager: http://localhost:9093
+  </p>
+</div>
+{{ end }}

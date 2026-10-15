@@ -17,6 +17,7 @@
 # metabase       http://localhost:3003        análises/BI sobre as previsões
 # grafana        http://localhost:3002        dashboards de drift
 # prometheus     http://localhost:9090        métricas e alertas
+# alertmanager   http://localhost:9093        envio dos alertas por e-mail (SMTP_* no .env)
 # exporter       http://localhost:8007        métricas de drift → Prometheus
 # airflow        http://localhost:8080        DAGs de monitoramento (hora em hora) e retreino do aluguel
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -91,6 +92,7 @@ volumes:
   postgres_data:
   metabase_plugins:
   prometheus_data:
+  alertmanager_data:
   grafana_data:
 
 services:
@@ -218,6 +220,32 @@ services:
       - "9090:9090"
     depends_on:
       - prometheus_exporter
+      - alertmanager
+    networks:
+      - imoveis
+
+  # Config gerada na subida a partir do template (credenciais só no .env, fora do git)
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: alertmanager
+    restart: unless-stopped
+    environment:
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      ALERT_EMAIL: ${ALERT_EMAIL:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        sed -e "s|__SMTP_USER__|$${SMTP_USER}|g"
+        -e "s|__SMTP_PASSWORD__|$$(echo $${SMTP_PASSWORD} | tr -d ' ')|g"
+        -e "s|__ALERT_EMAIL__|$${ALERT_EMAIL}|g"
+        /etc/alertmanager/config/alertmanager.yml.tmpl > /tmp/alertmanager.yml
+        && exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager
+    volumes:
+      - ./monitoring/docker/alertmanager:/etc/alertmanager/config:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "9093:9093"
     networks:
       - imoveis
 

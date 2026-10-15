@@ -33,6 +33,7 @@ urls() {
   Metabase    http://localhost:${METABASE_PORT:-3003}
   Grafana     http://localhost:3002   (admin / admin)
   Prometheus  http://localhost:9090
+  Alertmanager http://localhost:9093  (e-mail: SMTP_USER/SMTP_PASSWORD/ALERT_EMAIL no .env)
   Airflow     http://localhost:${AIRFLOW_PORT:-8080}   (admin / admin)
   Postgres    localhost:5433          (banco imoveis)
 EOF

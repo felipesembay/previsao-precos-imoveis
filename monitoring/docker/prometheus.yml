@@ -6,11 +6,11 @@ global:
 rule_files:
   - "alerts.yml"
 
-# ── Alertmanager (opcional — configurar se quiser notificações) ───────────────
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ["alertmanager:9093"]
+# ── Alertmanager (envia os alertas por e-mail) ────────────────────────────────
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
 
 # ── Scrape config ─────────────────────────────────────────────────────────────
 scrape_configs:

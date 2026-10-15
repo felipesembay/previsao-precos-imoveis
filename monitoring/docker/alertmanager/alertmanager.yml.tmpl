@@ -1,0 +1,42 @@
+# Alertmanager — notificações por e-mail (Gmail SMTP)
+#
+# Template: o container troca __SMTP_USER__, __SMTP_PASSWORD__ e __ALERT_EMAIL__
+# pelas variáveis do streamlit_app/.env ao subir (credenciais e e-mail fora do git).
+# SMTP_PASSWORD = senha de app do Google (https://myaccount.google.com/apppasswords).
+
+global:
+  smtp_smarthost: "smtp.gmail.com:587"
+  smtp_from: "Monitoramento Imóveis <__SMTP_USER__>"
+  smtp_auth_username: "__SMTP_USER__"
+  smtp_auth_password: "__SMTP_PASSWORD__"
+  smtp_require_tls: true
+
+templates:
+  - /etc/alertmanager/config/templates/*.tmpl
+
+# Um e-mail por tipo de alerta e modelo (as features com drift vêm juntas na mesma mensagem)
+route:
+  receiver: email
+  group_by: [alertname, modelo]
+  group_wait: 1m
+  group_interval: 10m
+  repeat_interval: 12h
+
+receivers:
+  - name: email
+    email_configs:
+      - to: "__ALERT_EMAIL__"
+        send_resolved: true
+        headers:
+          Subject: '[{{ if eq .Status "firing" }}ALERTA{{ else }}RESOLVIDO{{ end }}] {{ .CommonLabels.alertname }} — {{ .CommonLabels.modelo }} ({{ .Alerts | len }})'
+        html: '{{ template "email.imoveis.html" . }}'
+
+inhibit_rules:
+  # Drift crítico numa feature esconde o aviso da mesma feature
+  - source_matchers: [alertname="FeatureDriftCritical"]
+    target_matchers: [alertname="FeatureDriftHigh"]
+    equal: [modelo, versao, feature]
+  # Dataset drift já diz que a maioria das features mudou
+  - source_matchers: [alertname="DatasetDriftDetected"]
+    target_matchers: [alertname="MajorityFeaturesDrifted"]
+    equal: [modelo, versao]
