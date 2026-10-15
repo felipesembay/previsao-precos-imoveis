@@ -18,11 +18,13 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.insert(0, ROOT)
 
 from prometheus_client import Gauge, start_http_server
+from psycopg import sql
 
 from monitoring.db.postgres import get_connection as _pg_connection
 
@@ -99,6 +101,55 @@ performance_gauge = Gauge(
     "mape_limite, n_previsoes, n_com_valor_real, n_amostras_atual",
     ["metrica", "modelo", "versao"],
 )
+
+
+# ── Uso do banco (contador de inserções e limites do plano gratuito do Azure) ──
+banco_linhas_gauge = Gauge("banco_linhas", "Linhas por tabela do banco do app", ["tabela"])
+banco_insercoes_24h_gauge = Gauge("banco_insercoes_24h", "Linhas inseridas nas últimas 24 h", ["tabela"])
+banco_tamanho_gauge = Gauge("banco_tamanho_bytes", "Tamanho do banco do app em bytes")
+banco_limite_gauge = Gauge("banco_limite_bytes", "Armazenamento do plano gratuito (32 GB)")
+azure_horas_gauge = Gauge(
+    "azure_horas_mes_max",
+    "Horas do servidor no mês, supondo ligado desde a criação (teto conservador)",
+)
+azure_horas_limite_gauge = Gauge("azure_horas_limite", "Horas gratuitas de B1ms por mês")
+
+TABELAS_BANCO = [
+    "predicoes", "features_monitoramento", "predicoes_aluguel", "features_monitoramento_aluguel",
+    "metrics_monitoramento", "distribution_stats", "retreinos_modelo", "pois",
+]
+LIMITE_ARMAZENAMENTO = 32 * 1024 ** 3
+LIMITE_HORAS = 750
+
+
+def coletar_uso_banco() -> None:
+    """Contador de inserções e consumo frente aos limites gratuitos do Azure."""
+    try:
+        with _get_connection() as conn:
+            with conn.cursor() as cur:
+                for tabela in TABELAS_BANCO:
+                    cur.execute(
+                        sql.SQL("SELECT COUNT(*) AS total, COUNT(*) FILTER "
+                                "(WHERE created_at >= NOW() - INTERVAL '24 hours') AS dia FROM {}"
+                                ).format(sql.Identifier(tabela))
+                    )
+                    r = cur.fetchone()
+                    banco_linhas_gauge.labels(tabela=tabela).set(r["total"])
+                    banco_insercoes_24h_gauge.labels(tabela=tabela).set(r["dia"])
+                cur.execute("SELECT pg_database_size(current_database()) AS bytes")
+                banco_tamanho_gauge.set(cur.fetchone()["bytes"])
+        banco_limite_gauge.set(LIMITE_ARMAZENAMENTO)
+
+        criado = os.getenv("AZURE_PG_CRIADO_EM")
+        if os.getenv("BANCO_APP", "local").lower() == "azure" and criado:
+            agora = datetime.now(timezone.utc)
+            inicio = max(datetime.fromisoformat(criado.replace("Z", "+00:00")),
+                         agora.replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+            azure_horas_gauge.set((agora - inicio).total_seconds() / 3600)
+            azure_horas_limite_gauge.set(LIMITE_HORAS)
+        log.info("Uso do banco coletado (%d tabelas).", len(TABELAS_BANCO))
+    except Exception as exc:
+        log.error("Erro ao coletar uso do banco: %s", exc)
 
 
 # ─── Lógica de coleta ─────────────────────────────────────────────────────────
@@ -274,4 +325,5 @@ if __name__ == "__main__":
 
     while True:
         collect_and_expose()
+        coletar_uso_banco()
         time.sleep(POLL_INTERVAL)

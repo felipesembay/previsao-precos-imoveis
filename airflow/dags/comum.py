@@ -18,13 +18,26 @@ PROJETO_DIR = os.environ["PROJETO_DIR"]
 IMAGEM_APP = "imoveis-app:dev"
 REDE = "imoveis_imoveis"
 
-PG = {
-    "host": "postgres",
-    "port": 5432,
-    "dbname": os.getenv("PG_DB", "imoveis"),
-    "user": os.environ["PG_USER"],
-    "password": os.environ["PG_PASSWORD"],
-}
+# Dados do app: Postgres local ou Azure (BANCO_APP no .env, mesma regra de src/config_banco.py).
+# Os metadados do próprio Airflow ficam sempre no Postgres local.
+BANCO_APP = os.getenv("BANCO_APP", "local").strip().lower()
+if BANCO_APP == "azure":
+    PG = {
+        "host": os.environ["AZURE_PG_HOST"],
+        "port": 5432,
+        "dbname": os.getenv("AZURE_PG_DB", "imoveis"),
+        "user": os.environ["AZURE_PG_USER"],
+        "password": os.environ["AZURE_PG_PASSWORD"],
+        "sslmode": "require",
+    }
+else:
+    PG = {
+        "host": "postgres",
+        "port": 5432,
+        "dbname": os.getenv("PG_DB", "imoveis"),
+        "user": os.environ["PG_USER"],
+        "password": os.environ["PG_PASSWORD"],
+    }
 
 
 def tarefa_docker(task_id: str, command: list[str], **kwargs) -> DockerOperator:
@@ -40,16 +53,23 @@ def tarefa_docker(task_id: str, command: list[str], **kwargs) -> DockerOperator:
         # Mesmo usuário do host: arquivos criados em mlruns/ e data/ não ficam como root
         user=f"{os.getenv('HOST_UID', '1000')}:{os.getenv('HOST_GID', '1000')}",
         environment={
+            "BANCO_APP": BANCO_APP,
             "PG_HOST": "postgres",
             "PG_PORT": "5432",
-            "PG_DB": PG["dbname"],
-            "PG_USER": PG["user"],
+            "PG_DB": os.getenv("PG_DB", "imoveis"),
+            "PG_USER": os.environ["PG_USER"],
+            "AZURE_PG_HOST": os.getenv("AZURE_PG_HOST", ""),
+            "AZURE_PG_USER": os.getenv("AZURE_PG_USER", ""),
+            "AZURE_PG_DB": os.getenv("AZURE_PG_DB", "imoveis"),
             "HOME": "/tmp",
             "USER": "airflow",                # o UID do host não existe no /etc/passwd da imagem
             "GIT_PYTHON_REFRESH": "quiet",    # imagem sem git: o MLflow só não registra o SHA
             "PYTHONUNBUFFERED": "1",
         },
-        private_environment={"PG_PASSWORD": PG["password"]},
+        private_environment={
+            "PG_PASSWORD": os.environ["PG_PASSWORD"],
+            "AZURE_PG_PASSWORD": os.getenv("AZURE_PG_PASSWORD", ""),
+        },
         auto_remove="success",
         mount_tmp_dir=False,
         **kwargs,

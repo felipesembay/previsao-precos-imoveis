@@ -47,3 +47,9 @@ results/drift_reports/
 
 # Logs do Airflow
 airflow/logs/
+
+# Terraform: estado (contém a senha do banco), variáveis locais e cache de providers
+infra/terraform/**/.terraform/
+infra/terraform/**/terraform.tfstate*
+infra/terraform/**/terraform.tfvars
+infra/terraform/**/*.tfplan

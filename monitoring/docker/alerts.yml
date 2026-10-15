@@ -84,3 +84,31 @@ groups:
             O MAPE recente do modelo {{ $labels.modelo }} ({{ $labels.versao }}) está em
             {{ $value | humanizePercentage }}, acima do limite configurado em
             monitoring/config/features.yaml. Avaliar retreinamento.
+
+  # Limites do plano gratuito do Azure (exporter: coletar_uso_banco)
+  - name: azure_free_tier
+    rules:
+
+      - alert: AzureHorasPertoDoLimite
+        expr: azure_horas_mes_max > 700
+        for: 10m
+        labels:
+          severity: warning
+          modelo: infraestrutura
+        annotations:
+          summary: "Servidor Postgres do Azure perto do limite de horas gratuitas"
+          description: >
+            O teto de horas do mês está em {{ printf "%.0f" $value }} h (limite gratuito: 750 h de B1ms).
+            Confira se não há um segundo servidor ligado na assinatura.
+
+      - alert: AzureArmazenamentoAlto
+        expr: 100 * banco_tamanho_bytes / banco_limite_bytes > 80
+        for: 10m
+        labels:
+          severity: warning
+          modelo: infraestrutura
+        annotations:
+          summary: "Banco do Azure acima de 80% dos 32 GB gratuitos"
+          description: >
+            O banco ocupa {{ printf "%.1f" $value }}% do armazenamento gratuito.
+            O disco não cresce sozinho (autogrow desligado): limpe dados antigos antes de encher.

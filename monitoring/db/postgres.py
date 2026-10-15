@@ -1,22 +1,19 @@
 import os
+import sys
 
 import pandas as pd
 import psycopg
-from dotenv import load_dotenv
 from psycopg import sql
 from psycopg.rows import dict_row
 
-# Execução local: lê PG_* do mesmo .env das telas. No Docker, as variáveis vêm do compose.
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-load_dotenv(os.path.join(_ROOT, "streamlit_app", ".env"))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-PG_CONFIG = {
-    "host": os.getenv("PG_HOST", "localhost"),
-    "user": os.getenv("PG_USER", "postgres"),
-    "password": os.getenv("PG_PASSWORD", ""),
-    "dbname": os.getenv("PG_DB", "imoveis"),
-    "port": int(os.getenv("PG_PORT", 5432)),
-}
+from src.config_banco import config_banco  # noqa: E402
+
+# Local ou Azure conforme BANCO_APP (src/config_banco.py)
+PG_CONFIG = config_banco()
 
 
 def get_connection():

@@ -1,4 +1,5 @@
 import os
+import sys
 
 from dotenv import load_dotenv
 
@@ -13,11 +14,11 @@ DB_CONFIG = {
     "charset": "utf8mb4",
 }
 
-# PostgreSQL (destino da migração; local agora, Azure depois — só muda o .env)
-PG_CONFIG = {
-    "host": os.getenv("PG_HOST", "localhost"),
-    "port": int(os.getenv("PG_PORT", 5432)),
-    "user": os.getenv("PG_USER", "postgres"),
-    "password": os.getenv("PG_PASSWORD", ""),
-    "dbname": os.getenv("PG_DB", "imoveis"),
-}
+# PostgreSQL: local ou Azure conforme BANCO_APP (src/config_banco.py)
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from src.config_banco import config_banco  # noqa: E402
+
+PG_CONFIG = config_banco()

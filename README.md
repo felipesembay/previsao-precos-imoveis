@@ -298,6 +298,22 @@ DRIFT_DRY_RUN=1 python monitoring/jobs/run_data_drift.py     # apenas imprime
 
 > No Docker, a DAG `monitoramento_modelos` do Airflow roda o job de hora em hora.
 
+### ☁️ Banco no Azure (Terraform)
+
+O banco do app roda no **Azure Database for PostgreSQL** (Burstable B1ms, 32 GB, brazilsouth), criado por [`infra/terraform/azure`](infra/terraform/azure). Os serviços continuam no docker-compose local e só os dados vão para a nuvem; os metadados do Airflow e do Metabase ficam no Postgres local.
+
+- Tudo que sairia do plano gratuito está fixado no código: sem alta disponibilidade, sem backup geo-redundante, Premium SSD de 32 GB (P4), sem autogrow.
+- Um orçamento do Azure manda e-mail se houver qualquer gasto real; alertas no Prometheus avisam perto de 700 h/mês ou 80% do disco.
+- O dashboard **"Uso do banco — Azure"** mostra horas do mês × 750 h, tamanho × 32 GB e o contador de inserções.
+- `BANCO_APP=local|azure` no `.env` escolhe o banco ([`src/config_banco.py`](src/config_banco.py)); depois de trocar, `./infra.sh up`.
+
+```bash
+cd infra/terraform/azure
+cp terraform.tfvars.example terraform.tfvars   # seu IPv4 e e-mail
+terraform init && terraform plan -out azure.tfplan
+terraform apply azure.tfplan
+```
+
 ---
 
 ## 🔌 API REST
@@ -423,7 +439,8 @@ score = peso_dist × exp(−dist_mais_proximo / raio_decaimento) + peso_qtd × q
 - [x] Aluguel: interface Streamlit (com custo total estimado por bairro)
 - [x] Aluguel: monitoramento de drift e desempenho reaproveitando a stack existente
 - [x] Orquestração (Airflow): monitoramento de hora em hora e retreino automático com champion/challenger
-- [ ] Cloud (Azure PostgreSQL via Terraform) e CI/CD (GitHub Actions)
+- [x] Cloud: Azure PostgreSQL (plano gratuito) via Terraform, com alerta de orçamento
+- [ ] CI/CD (GitHub Actions)
 
 Detalhes em [`roadmap-projetos-portfolio.md`](roadmap-projetos-portfolio.md).
 

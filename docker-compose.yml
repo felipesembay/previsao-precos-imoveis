@@ -76,6 +76,12 @@ x-airflow: &airflow
     PG_USER: ${PG_USER}
     PG_PASSWORD: ${PG_PASSWORD}
     PG_DB: imoveis
+    # Banco dos dados do app (local | azure) — ver src/config_banco.py
+    BANCO_APP: ${BANCO_APP:-local}
+    AZURE_PG_HOST: ${AZURE_PG_HOST:-}
+    AZURE_PG_USER: ${AZURE_PG_USER:-}
+    AZURE_PG_PASSWORD: ${AZURE_PG_PASSWORD:-}
+    AZURE_PG_DB: ${AZURE_PG_DB:-imoveis}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs

@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir \
 
 # Copiar código do projeto
 COPY monitoring/ monitoring/
+COPY src/__init__.py src/config_banco.py src/
 COPY data/processed/baseline_monitoring.parquet data/processed/baseline_monitoring.parquet
 
 ENV PYTHONUNBUFFERED=1
