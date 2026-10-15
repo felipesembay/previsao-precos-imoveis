@@ -22,3 +22,4 @@ psycopg[binary]==3.3.6
 openpyxl==3.1.5
 evidently==0.7.20
 optuna==4.6.0
+python-multipart==0.0.20

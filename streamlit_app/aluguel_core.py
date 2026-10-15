@@ -5,11 +5,9 @@ Geocoding Google · modelo do MLflow · POIs de SP · custo extra por bairro · 
 
 import os
 import sys
-import unicodedata
 
 import mlflow
 import mlflow.sklearn
-import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
@@ -21,8 +19,11 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.features.aluguel import NUM_FEATURES, carregar_pois_sp  # noqa: E402
+from src.features.aluguel import carregar_pois_sp  # noqa: E402
 from src.models.registro import cliente, versao_champion  # noqa: E402
+# Funções puras compartilhadas com a API REST
+from src.inferencia.aluguel import (custo_extra_do_bairro, features_para_monitoramento,  # noqa: E402,F401
+                                    montar_registro, prever_aluguel)
 
 MODEL_NAME = "RentPriceModel_SP"
 OSM_DIR = os.path.join(ROOT, "data", "raw", "osm")
@@ -106,63 +107,7 @@ def carregar_custo_extra():
     return pd.read_parquet(CUSTO_PATH)
 
 
-def _normalizar(txt) -> str:
-    txt = unicodedata.normalize("NFKD", str(txt)).encode("ascii", "ignore").decode()
-    return txt.lower().strip()
 
 
-def custo_extra_do_bairro(bairro, tabela):
-    """Procura o bairro (sem acento) na tabela; sem correspondência, usa a mediana da cidade."""
-    cidade = tabela[tabela["fonte"] == "cidade"]
-    padrao = cidade.iloc[0] if len(cidade) else tabela.median(numeric_only=True)
-
-    if bairro:
-        chave = _normalizar(bairro)
-        for col in ["neighbourhood", "regionName"]:
-            achou = tabela[tabela[col].map(_normalizar) == chave]
-            if len(achou):
-                return achou.iloc[0], f"{bairro} ({achou.iloc[0]['fonte']})"
-    return padrao, "mediana da cidade"
 
 
-# ==========================================
-# Registro para o banco
-# ==========================================
-def montar_registro(geo: dict, imovel: dict, entrada: pd.DataFrame, aluguel_predito: float,
-                    aluguel_anuncio, pct_extra, versao_modelo, origem: str) -> dict:
-    """Dicionário com as colunas de predicoes_aluguel (ver db/conf_aluguel.sql)."""
-    erro_abs = erro_pct = None
-    if aluguel_anuncio is not None and not pd.isna(aluguel_anuncio) and aluguel_anuncio > 0:
-        erro_abs = abs(aluguel_predito - aluguel_anuncio)
-        erro_pct = erro_abs / aluguel_anuncio
-    else:
-        aluguel_anuncio = None
-
-    return {
-        "endereco": geo.get("endereco_formatado"),
-        "bairro": geo.get("bairro"),
-        "latitude": geo["lat"],
-        "longitude": geo["lng"],
-        "tipo_imovel_cat": entrada["tipo_imovel_cat"].iloc[0],
-        **{k: imovel[k] for k in ["area", "bedrooms", "bathrooms", "suites", "parkingSpaces", "mobiliado",
-                                  "am_ar_condicionado", "inst_piscina", "inst_academia", "am_varanda"]},
-        "aluguel_anuncio": aluguel_anuncio,
-        "aluguel_predito": aluguel_predito,
-        "pct_custo_extra": pct_extra,
-        "custo_total_estimado": aluguel_predito * (1 + pct_extra) if pct_extra is not None else None,
-        "erro_absoluto": erro_abs,
-        "erro_percentual": erro_pct,
-        "modelo": MODEL_NAME,
-        "versao_modelo": str(versao_modelo),
-        "origem": origem,
-    }
-
-
-def features_para_monitoramento(entrada: pd.DataFrame) -> dict:
-    return {c: float(entrada[c].iloc[0]) for c in NUM_FEATURES}
-
-
-def prever_aluguel(modelo, entrada: pd.DataFrame) -> np.ndarray:
-    """Aluguel em R$ (o modelo prevê log do aluguel)."""
-    from src.features.aluguel import CAT_FEATURES
-    return np.exp(modelo.predict(entrada[NUM_FEATURES + CAT_FEATURES]))
