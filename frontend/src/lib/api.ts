@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import * as mock from "./mocks";
 
 export type TipoImovel = "apartamento" | "studio" | "casa" | "casa_condominio";
@@ -108,8 +109,28 @@ const delay = <T,>(fn: () => T, ms = 600) =>
     }, ms),
   );
 
+// A API roda no plano gratuito do Render, que dorme após 15 min sem uso: a primeira
+// chamada pode levar até ~1 min. Se demorar, avisa em vez de parecer travado.
+const AVISO_ACORDANDO_MS = 4000;
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init);
+  const aviso = setTimeout(
+    () =>
+      toast.loading("Acordando a API…", {
+        id: "acordando",
+        description: "No plano gratuito ela dorme após 15 min sem uso; a primeira consulta leva até 1 minuto.",
+      }),
+    AVISO_ACORDANDO_MS,
+  );
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, init);
+  } catch {
+    throw new Error("Não foi possível conectar à API. Tente de novo em instantes.");
+  } finally {
+    clearTimeout(aviso);
+    toast.dismiss("acordando");
+  }
   if (!res.ok) {
     let msg = `Erro ${res.status}`;
     try {
@@ -181,3 +202,8 @@ export const qk = {
   achados: ["mercado", "achados"],
   infra: ["infra"],
 } as const;
+
+/** Cutuca a API ao abrir o site, para ela já estar acordada quando o usuário consultar. */
+export function acordarApi() {
+  if (!USE_MOCKS) fetch(`${BASE}/health`).catch(() => {});
+}

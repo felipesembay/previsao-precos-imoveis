@@ -12,6 +12,8 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { Header } from "../components/Header";
+import { Toaster } from "../components/ui/sonner";
+import { acordarApi } from "../lib/api";
 import { ThemeProvider, themeScript } from "../components/theme";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
@@ -119,6 +121,7 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  useEffect(acordarApi, []);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -134,6 +137,7 @@ function RootComponent() {
             <span>Estimativas de modelos estatísticos — não constituem avaliação oficial.</span>
           </div>
         </footer>
+        <Toaster position="bottom-right" />
       </ThemeProvider>
     </QueryClientProvider>
   );
