@@ -11,6 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AluguelRouteImport } from './routes/aluguel'
+import { Route as LoteRouteImport } from './routes/lote'
+import { Route as MercadoRouteImport } from './routes/mercado'
+import { Route as ModeloRouteImport } from './routes/modelo'
+import { Route as SobreRouteImport } from './routes/sobre'
 import { Route as VendaRouteImport } from './routes/venda'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +27,26 @@ const AluguelRoute = AluguelRouteImport.update({
   path: '/aluguel',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoteRoute = LoteRouteImport.update({
+  id: '/lote',
+  path: '/lote',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MercadoRoute = MercadoRouteImport.update({
+  id: '/mercado',
+  path: '/mercado',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ModeloRoute = ModeloRouteImport.update({
+  id: '/modelo',
+  path: '/modelo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SobreRoute = SobreRouteImport.update({
+  id: '/sobre',
+  path: '/sobre',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VendaRoute = VendaRouteImport.update({
   id: '/venda',
   path: '/venda',
@@ -32,30 +56,55 @@ const VendaRoute = VendaRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/aluguel': typeof AluguelRoute
+  '/lote': typeof LoteRoute
+  '/mercado': typeof MercadoRoute
+  '/modelo': typeof ModeloRoute
+  '/sobre': typeof SobreRoute
   '/venda': typeof VendaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/aluguel': typeof AluguelRoute
+  '/lote': typeof LoteRoute
+  '/mercado': typeof MercadoRoute
+  '/modelo': typeof ModeloRoute
+  '/sobre': typeof SobreRoute
   '/venda': typeof VendaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/aluguel': typeof AluguelRoute
+  '/lote': typeof LoteRoute
+  '/mercado': typeof MercadoRoute
+  '/modelo': typeof ModeloRoute
+  '/sobre': typeof SobreRoute
   '/venda': typeof VendaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/aluguel' | '/venda'
+  fullPaths:
+    '/' | '/aluguel' | '/lote' | '/mercado' | '/modelo' | '/sobre' | '/venda'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/aluguel' | '/venda'
-  id: '__root__' | '/' | '/aluguel' | '/venda'
+  to: '/' | '/aluguel' | '/lote' | '/mercado' | '/modelo' | '/sobre' | '/venda'
+  id:
+    | '__root__'
+    | '/'
+    | '/aluguel'
+    | '/lote'
+    | '/mercado'
+    | '/modelo'
+    | '/sobre'
+    | '/venda'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AluguelRoute: typeof AluguelRoute
+  LoteRoute: typeof LoteRoute
+  MercadoRoute: typeof MercadoRoute
+  ModeloRoute: typeof ModeloRoute
+  SobreRoute: typeof SobreRoute
   VendaRoute: typeof VendaRoute
 }
 
@@ -75,6 +124,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AluguelRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/lote': {
+      id: '/lote'
+      path: '/lote'
+      fullPath: '/lote'
+      preLoaderRoute: typeof LoteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mercado': {
+      id: '/mercado'
+      path: '/mercado'
+      fullPath: '/mercado'
+      preLoaderRoute: typeof MercadoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/modelo': {
+      id: '/modelo'
+      path: '/modelo'
+      fullPath: '/modelo'
+      preLoaderRoute: typeof ModeloRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sobre': {
+      id: '/sobre'
+      path: '/sobre'
+      fullPath: '/sobre'
+      preLoaderRoute: typeof SobreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/venda': {
       id: '/venda'
       path: '/venda'
@@ -88,6 +165,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AluguelRoute: AluguelRoute,
+  LoteRoute: LoteRoute,
+  MercadoRoute: MercadoRoute,
+  ModeloRoute: ModeloRoute,
+  SobreRoute: SobreRoute,
   VendaRoute: VendaRoute,
 }
 export const routeTree = rootRouteImport

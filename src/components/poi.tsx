@@ -25,7 +25,7 @@ export function PoiList({ pois }: { pois: Poi[] }) {
       {grupos.map(({ cat, itens }) => {
         const m = poiMeta(cat);
         const Icon = m.icon;
-        const maisPerto = itens[0];
+        const maisPerto = itens[0]!;
         return (
           <li key={cat} className="flex items-center gap-3 py-2.5">
             <span className="poi-pin shrink-0" style={{ background: poiColor(cat) }}>

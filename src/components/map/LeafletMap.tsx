@@ -21,7 +21,7 @@ function Fit({ pts }: { pts: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
     if (pts.length > 1) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 16 });
-    else if (pts.length === 1) map.setView(pts[0], 15);
+    else if (pts.length === 1) map.setView(pts[0]!, 15);
   }, [map, JSON.stringify(pts)]);
   return null;
 }
