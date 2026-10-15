@@ -99,6 +99,9 @@ def calcular_desempenho(cfg: dict, nome: str, versao: str):
     n_previsoes = len(preds)
     metricas = {"n_previsoes": float(n_previsoes), "mape_limite": float(cfg["mape_limite"])}
 
+    # Sem valor real na janela: grava NaN para o painel não mostrar o último MAPE como se fosse atual
+    metricas.update({"mae_reais": np.nan, "mape": np.nan, "mdape": np.nan, "vies_mediano": np.nan})
+
     if n_previsoes:
         real = pd.to_numeric(preds[cfg["coluna_real"]], errors="coerce")
         prev = pd.to_numeric(preds[cfg["coluna_predita"]], errors="coerce")
@@ -118,7 +121,7 @@ def calcular_desempenho(cfg: dict, nome: str, versao: str):
 
     print(f"   📏 Desempenho ({CURRENT_DAYS} dias): {n_previsoes} previsões, "
           f"{int(metricas['n_com_valor_real'])} com valor real", end="")
-    if "mape" in metricas:
+    if not np.isnan(metricas["mape"]):
         alerta = " ⚠️ ACIMA DO LIMITE" if metricas["mape"] > cfg["mape_limite"] else ""
         print(f" | MAE R$ {metricas['mae_reais']:,.0f} | MAPE {metricas['mape']:.1%} "
               f"(limite {cfg['mape_limite']:.0%}){alerta}")
