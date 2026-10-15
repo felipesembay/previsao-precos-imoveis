@@ -11,6 +11,8 @@ export const POI_META: Record<string, { label: string; icon: LucideIcon }> = {
   mercado: { label: "Mercado", icon: ShoppingCart },
   parque: { label: "Parque", icon: Trees },
   delegacia: { label: "Delegacia", icon: ShieldCheck },
+  trem: { label: "Trem (CPTM)", icon: TrainFront },
+  escola: { label: "Escola", icon: School },
 };
 export const poiMeta = (c: string) => POI_META[c] ?? { label: c, icon: Building2 };
 export const poiColor = (c: string) => (POI_META[c] ? `var(--poi-${c})` : "var(--muted-foreground)");

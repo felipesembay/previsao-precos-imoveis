@@ -8,7 +8,13 @@ import { fmtDist } from "@/lib/format";
 import { poiColor, poiMeta } from "../poi";
 import { useTheme } from "../theme";
 
-export interface MapCircle { lat: number; lon: number; radius: number; color: string; label: string }
+export interface MapCircle {
+  lat: number;
+  lon: number;
+  radius: number;
+  color: string;
+  label: string;
+}
 export interface MapProps {
   center: [number, number];
   zoom?: number;
@@ -30,18 +36,36 @@ const icon = (html: string, cls: string, size: number) =>
   L.divIcon({ html, className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 
 export default function LeafletMap({ center, zoom = 12, home, pois = [], circles = [] }: MapProps) {
+  // Tiles padrão do OpenStreetMap (sem chave; a CARTO passou a exigir API key).
+  // O modo escuro é um filtro CSS sobre os tiles (ver .dark .leaflet-tile em styles.css).
   const { theme } = useTheme();
-  const tiles = `https://{s}.basemaps.cartocdn.com/${theme === "dark" ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`;
+  const tiles = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   const pts = useMemo<[number, number][]>(
-    () => (home ? [[home.lat, home.lon] as [number, number], ...pois.map((p) => [p.lat, p.lon] as [number, number])] : []),
+    () =>
+      home
+        ? [
+            [home.lat, home.lon] as [number, number],
+            ...pois.map((p) => [p.lat, p.lon] as [number, number]),
+          ]
+        : [],
     [home, pois],
   );
   return (
     <MapContainer center={center} zoom={zoom} scrollWheelZoom={false} className="h-full w-full">
-      <TileLayer key={theme} url={tiles} attribution='&copy; OpenStreetMap &copy; CARTO' />
+      <TileLayer
+        key={theme}
+        url={tiles}
+        maxZoom={19}
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      />
       {pts.length > 0 && <Fit pts={pts} />}
       {circles.map((c) => (
-        <CircleMarker key={c.label} center={[c.lat, c.lon]} radius={c.radius} pathOptions={{ color: c.color, fillColor: c.color, fillOpacity: 0.55, weight: 1 }}>
+        <CircleMarker
+          key={c.label}
+          center={[c.lat, c.lon]}
+          radius={c.radius}
+          pathOptions={{ color: c.color, fillColor: c.color, fillOpacity: 0.55, weight: 1 }}
+        >
           <Tooltip>{c.label}</Tooltip>
         </CircleMarker>
       ))}
@@ -61,7 +85,11 @@ export default function LeafletMap({ center, zoom = 12, home, pois = [], circles
         <Marker
           position={[home.lat, home.lon]}
           zIndexOffset={1000}
-          icon={icon(`<div class="poi-pin home-pin">${renderToStaticMarkup(<Home size={16} />)}</div>`, "", 34)}
+          icon={icon(
+            `<div class="poi-pin home-pin">${renderToStaticMarkup(<Home size={16} />)}</div>`,
+            "",
+            34,
+          )}
         >
           <Tooltip>{home.label}</Tooltip>
         </Marker>

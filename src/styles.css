@@ -88,6 +88,14 @@
   --poi-mercado: oklch(0.68 0.15 60);
   --poi-parque: oklch(0.58 0.15 140);
   --poi-delegacia: oklch(0.38 0.05 250);
+  --poi-trem: oklch(0.5 0.12 330);
+  /* Escala sequencial (magnitude, um só tom): mais escuro = maior no tema claro */
+  --seq-1: oklch(0.88 0.035 240);
+  --seq-2: oklch(0.76 0.06 240);
+  --seq-3: oklch(0.64 0.085 240);
+  --seq-4: oklch(0.52 0.1 240);
+  --seq-5: oklch(0.4 0.11 240);
+  --poi-escola: oklch(0.55 0.14 250);
 }
 
 .dark {
@@ -117,6 +125,12 @@
   --input: oklch(1 0 0 / 14%);
   --ring: oklch(0.68 0.1 230);
   --chart-1: oklch(0.68 0.1 230);
+  /* No tema escuro, maior = mais claro (mais contraste com o fundo) */
+  --seq-1: oklch(0.42 0.05 230);
+  --seq-2: oklch(0.52 0.07 230);
+  --seq-3: oklch(0.62 0.085 230);
+  --seq-4: oklch(0.72 0.1 230);
+  --seq-5: oklch(0.82 0.1 230);
 }
 
 @layer base {
@@ -139,6 +153,13 @@
 .leaflet-container {
   font-family: var(--font-sans);
   background: var(--muted);
+}
+/* Tiles do OSM mais discretos para os dados se destacarem; no escuro, invertidos */
+.leaflet-tile-pane {
+  filter: saturate(0.45) brightness(1.03);
+}
+.dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) saturate(0.35) brightness(0.85) contrast(0.9);
 }
 .poi-pin {
   display: flex;

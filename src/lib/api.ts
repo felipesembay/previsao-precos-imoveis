@@ -25,15 +25,26 @@ export interface Comparacao { aluguel_anunciado: number; diferenca_pct: number; 
 export interface AluguelResponse {
   aluguel_estimado: number;
   faixa: { min: number; max: number };
-  custo_extra_pct: number;
-  custo_total_estimado: number;
+  /** Percentual (23.6 = 23,6%); null se não houver tabela de custo do bairro. */
+  custo_extra_pct: number | null;
+  custo_total_estimado: number | null;
   bairro: string | null;
   localizacao: Localizacao;
   pois_proximos: Poi[];
   comparacao: Comparacao | null;
   modelo: ModeloRef;
 }
-export interface CompraRequest { endereco: string; area: number; quartos: number; banheiros: number; vagas: number }
+export type TipoCompra = "casa" | "apartamento" | "comercial";
+export interface CompraRequest {
+  endereco: string;
+  area: number;
+  quartos: number;
+  banheiros: number;
+  vagas: number;
+  tipo?: TipoCompra;
+  sobrado?: boolean;
+  preco_anunciado?: number | undefined;
+}
 export interface CompraResponse {
   preco_estimado: number;
   faixa: { min: number; max: number };
@@ -48,8 +59,9 @@ export interface Modelo {
   nome: string;
   versao: string;
   treinado_em: string;
-  n_treino: number;
-  metricas: { r2: number; mae_reais: number; mape: number };
+  n_treino: number | null;
+  /** mape em percentual; o modelo de compra só tem R² (mae_reais e mape null). */
+  metricas: { r2: number; mae_reais: number | null; mape: number | null };
 }
 export interface ModelosResponse { modelos: Modelo[] }
 export interface MonitoramentoResponse {
@@ -73,7 +85,8 @@ export interface Regiao { nome: string; lat: number; lon: number; n_anuncios: nu
 export interface RegioesResponse { regioes: Regiao[] }
 export interface AchadosResponse { achados: { titulo: string; valor: string; descricao: string }[] }
 export interface InfraResponse {
-  horas_mes: number;
+  /** null quando o banco é o Postgres local (sem limite de horas). */
+  horas_mes: number | null;
   horas_limite: number;
   banco_bytes: number;
   banco_limite_bytes: number;
@@ -81,7 +94,7 @@ export interface InfraResponse {
   previsoes_total: number;
 }
 
-const BASE = (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://localhost:8000";
+const BASE = (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://localhost:8009";
 export const USE_MOCKS = (import.meta.env["VITE_USE_MOCKS"] ?? "true") !== "false";
 
 const delay = <T,>(fn: () => T, ms = 600) =>
@@ -112,9 +125,34 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
 const post = <T,>(path: string, body: unknown) =>
   http<T>(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
+// A API devolve porcentagens como fração (0.236); a UI trabalha em pontos percentuais (23.6), como os mocks.
+const pp = (v: number) => v * 100;
+const ppOuNull = (v: number | null) => (v == null ? null : pp(v));
+
+const adaptar = {
+  aluguel: (r: AluguelResponse): AluguelResponse => ({
+    ...r,
+    custo_extra_pct: ppOuNull(r.custo_extra_pct),
+    comparacao: r.comparacao && { ...r.comparacao, diferenca_pct: pp(r.comparacao.diferenca_pct) },
+  }),
+  modelos: (r: ModelosResponse): ModelosResponse => ({
+    modelos: r.modelos.map((m) => ({ ...m, metricas: { ...m.metricas, mape: ppOuNull(m.metricas.mape) } })),
+  }),
+  monitoramento: (r: MonitoramentoResponse): MonitoramentoResponse => ({
+    ...r,
+    mape_limite: pp(r.mape_limite),
+    mape_serie: r.mape_serie.map((p) => ({ ...p, mape: pp(p.mape) })),
+  }),
+  retreinos: (r: RetreinosResponse): RetreinosResponse => ({
+    retreinos: r.retreinos.map((t) => ({
+      ...t, mape_challenger: pp(t.mape_challenger), mape_champion: ppOuNull(t.mape_champion),
+    })),
+  }),
+};
+
 export const api = {
   preverAluguel: (r: AluguelRequest) =>
-    USE_MOCKS ? delay(() => mock.preverAluguel(r)) : post<AluguelResponse>("/aluguel/prever", r),
+    USE_MOCKS ? delay(() => mock.preverAluguel(r)) : post<AluguelResponse>("/aluguel/prever", r).then(adaptar.aluguel),
   preverCompra: (r: CompraRequest) =>
     USE_MOCKS ? delay(() => mock.preverCompra(r)) : post<CompraResponse>("/compra/prever", r),
   preverLote: async (arquivo: File): Promise<LoteResponse> => {
@@ -126,9 +164,10 @@ export const api = {
     fd.append("arquivo", arquivo);
     return http<LoteResponse>("/aluguel/prever-lote", { method: "POST", body: fd });
   },
-  modelos: () => (USE_MOCKS ? delay(mock.modelos) : http<ModelosResponse>("/modelos")),
-  monitoramento: () => (USE_MOCKS ? delay(mock.monitoramento) : http<MonitoramentoResponse>("/monitoramento/aluguel")),
-  retreinos: () => (USE_MOCKS ? delay(mock.retreinos) : http<RetreinosResponse>("/retreinos")),
+  modelos: () => (USE_MOCKS ? delay(mock.modelos) : http<ModelosResponse>("/modelos").then(adaptar.modelos)),
+  monitoramento: () =>
+    USE_MOCKS ? delay(mock.monitoramento) : http<MonitoramentoResponse>("/monitoramento/aluguel").then(adaptar.monitoramento),
+  retreinos: () => (USE_MOCKS ? delay(mock.retreinos) : http<RetreinosResponse>("/retreinos").then(adaptar.retreinos)),
   regioes: () => (USE_MOCKS ? delay(mock.regioes) : http<RegioesResponse>("/mercado/aluguel/regioes")),
   achados: () => (USE_MOCKS ? delay(mock.achados) : http<AchadosResponse>("/mercado/aluguel/achados")),
   infra: () => (USE_MOCKS ? delay(mock.infra) : http<InfraResponse>("/infra/uso")),

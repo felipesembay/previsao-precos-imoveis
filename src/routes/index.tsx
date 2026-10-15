@@ -25,7 +25,7 @@ export const Route = createFileRoute("/")({
 const passos = [
   { icon: MapPin, t: "Endereço", d: "Você informa o endereço e as características do imóvel." },
   { icon: RouteIcon, t: "Localização e entorno", d: "Geocodificamos e medimos a distância até metrô, escolas, hospitais, parques e mais." },
-  { icon: Brain, t: "Modelo", d: "Um modelo de gradient boosting combina tudo isso com o histórico do bairro." },
+  { icon: Brain, t: "Modelo", d: "Um XGBoost combina o imóvel com a distância ao centro, aos polos de emprego e aos pontos de interesse." },
   { icon: Receipt, t: "Preço e custo total", d: "Você recebe o aluguel estimado, a faixa provável e o custo com condomínio e IPTU." },
 ];
 
@@ -52,9 +52,9 @@ function Inicio() {
         ) : (
           <Card className="grid grid-cols-2 divide-border p-0 sm:grid-cols-4 sm:divide-x">
             {[
-              ["Anúncios analisados", m && fmtNum(m.n_treino)],
-              ["R² do modelo", m && m.metricas.r2.toLocaleString("pt-BR", { minimumFractionDigits: 3 })],
-              ["Erro médio (MAPE)", m && fmtPct(m.metricas.mape)],
+              ["Anúncios no treino", m && (m.n_treino != null ? fmtNum(m.n_treino) : "—")],
+              ["R² do modelo", m && m.metricas.r2.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })],
+              ["Erro médio (MAPE)", m && (m.metricas.mape != null ? fmtPct(m.metricas.mape) : "—")],
               ["Última atualização", m && fmtData(m.treinado_em)],
             ].map(([l, v]) => (
               <div key={l} className="p-6">

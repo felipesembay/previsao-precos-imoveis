@@ -110,7 +110,7 @@ const SELO = {
 
 function Resultado({ r }: { r: AluguelResponse }) {
   const selo = r.comparacao && SELO[r.comparacao.classificacao];
-  const extra = r.custo_total_estimado - r.aluguel_estimado;
+  const temCusto = r.custo_total_estimado != null && r.custo_extra_pct != null;
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
@@ -136,12 +136,18 @@ function Resultado({ r }: { r: AluguelResponse }) {
         </Card>
         <Card className="p-6">
           <div className="text-sm text-muted-foreground">Custo total estimado</div>
-          <div className="num mt-1 text-3xl font-semibold">{fmtBRL(r.custo_total_estimado)}</div>
-          <dl className="num mt-4 space-y-2 text-sm">
-            <div className="flex justify-between"><dt className="text-muted-foreground">Aluguel</dt><dd>{fmtBRL(r.aluguel_estimado)}</dd></div>
-            <div className="flex justify-between"><dt className="text-muted-foreground">Condomínio + IPTU ({fmtPct(r.custo_extra_pct)})</dt><dd>{fmtBRL(extra)}</dd></div>
-          </dl>
-          <p className="mt-3 text-xs text-muted-foreground">Percentual mediano observado no bairro.</p>
+          {temCusto ? (
+            <>
+              <div className="num mt-1 text-3xl font-semibold">{fmtBRL(r.custo_total_estimado!)}</div>
+              <dl className="num mt-4 space-y-2 text-sm">
+                <div className="flex justify-between"><dt className="text-muted-foreground">Aluguel</dt><dd>{fmtBRL(r.aluguel_estimado)}</dd></div>
+                <div className="flex justify-between"><dt className="text-muted-foreground">Condomínio + IPTU ({fmtPct(r.custo_extra_pct!)})</dt><dd>{fmtBRL(r.custo_total_estimado! - r.aluguel_estimado)}</dd></div>
+              </dl>
+              <p className="mt-3 text-xs text-muted-foreground">Percentual mediano observado no bairro.</p>
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">Sem dados de condomínio e IPTU para este bairro.</p>
+          )}
         </Card>
       </div>
       <p className="text-sm text-muted-foreground">{r.localizacao.endereco_formatado}</p>
