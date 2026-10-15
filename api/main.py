@@ -27,10 +27,9 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
-import mlflow
 import pandas as pd
 import psycopg
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field, ValidationError
@@ -46,13 +45,15 @@ from src.inferencia.aluguel import ServicoAluguel  # noqa: E402
 from src.inferencia.compra import MODEL_NAME as COMPRA_MODELO  # noqa: E402
 from src.inferencia.compra import VERSAO as COMPRA_VERSAO  # noqa: E402
 from src.inferencia.compra import ServicoCompra  # noqa: E402
-from src.inferencia.geocoding import geocode  # noqa: E402
+from api.limites import limitar_por_ip  # noqa: E402
+from src.inferencia.geocoding import LimiteGeocodingExcedido, geocode  # noqa: E402
+from src.inferencia import pacote  # noqa: E402
 from src.models.predict import predict, predict_batch  # noqa: E402
 
 log = logging.getLogger("api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [API] %(levelname)s %(message)s")
 
-MAX_LINHAS_LOTE = 200          # cada linha consome uma chamada paga de geocoding
+MAX_LINHAS_LOTE = int(os.getenv("MAX_LINHAS_LOTE", "200"))  # cada linha = uma chamada paga de geocoding
 THREADS_GEOCODING = 8
 
 # Origens do frontend: Lovable (preview e publicado) e localhost; CORS_ORIGINS acrescenta outras
@@ -72,7 +73,10 @@ def conectar():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mlflow.set_tracking_uri(f"file:{os.path.join(ROOT_DIR, 'mlruns')}")
+    if not pacote.ativo():  # local: modelos do MLflow; na nuvem: pacote de deploy
+        import mlflow
+
+        mlflow.set_tracking_uri(f"file:{os.path.join(ROOT_DIR, 'mlruns')}")
     for chave, fabrica in (("aluguel", ServicoAluguel), ("compra", lambda: ServicoCompra(conectar))):
         try:
             servicos[chave] = fabrica()
@@ -109,6 +113,8 @@ def _servico(chave: str):
 def _geocodificar(endereco: str) -> dict:
     try:
         geo = geocode(endereco)
+    except LimiteGeocodingExcedido:
+        raise HTTPException(429, "Limite diário de consultas de endereço atingido. Tente amanhã.")
     except Exception as exc:
         log.error("Geocoding falhou: %s", exc)
         raise HTTPException(502, "Serviço de geocoding indisponível.")
@@ -143,7 +149,8 @@ def _salvar_compra(dados: dict):
 # Previsão
 # ══════════════════════════════════════════════════════════════════════════════
 @app.post("/aluguel/prever", response_model=E.AluguelResponse, tags=["previsão"])
-def prever_aluguel(req: E.AluguelRequest, tarefas: BackgroundTasks):
+def prever_aluguel(req: E.AluguelRequest, tarefas: BackgroundTasks, request: Request):
+    limitar_por_ip(request)
     servico = _servico("aluguel")
     geo = _geocodificar(req.endereco)
     try:
@@ -155,7 +162,7 @@ def prever_aluguel(req: E.AluguelRequest, tarefas: BackgroundTasks):
 
 
 @app.post("/aluguel/prever-lote", response_model=E.LoteResponse, tags=["previsão"])
-async def prever_aluguel_lote(tarefas: BackgroundTasks, arquivo: UploadFile = File(...)):
+async def prever_aluguel_lote(request: Request, tarefas: BackgroundTasks, arquivo: UploadFile = File(...)):
     """CSV com as colunas do POST /aluguel/prever (uma linha por imóvel, até 200)."""
     servico = _servico("aluguel")
     try:
@@ -164,6 +171,7 @@ async def prever_aluguel_lote(tarefas: BackgroundTasks, arquivo: UploadFile = Fi
         raise HTTPException(400, "Não consegui ler o CSV. Use o modelo de colunas do /docs.")
     if len(df) > MAX_LINHAS_LOTE:
         raise HTTPException(413, f"Máximo de {MAX_LINHAS_LOTE} linhas por lote.")
+    limitar_por_ip(request, custo=len(df))
     df.columns = [c.strip().lower() for c in df.columns]
     linhas = df.astype(object).where(df.notna(), None).to_dict("records")
 
@@ -189,7 +197,8 @@ async def prever_aluguel_lote(tarefas: BackgroundTasks, arquivo: UploadFile = Fi
 
 
 @app.post("/compra/prever", response_model=E.CompraResponse, tags=["previsão"])
-def prever_compra(req: E.CompraRequest, tarefas: BackgroundTasks):
+def prever_compra(req: E.CompraRequest, tarefas: BackgroundTasks, request: Request):
+    limitar_por_ip(request)
     servico = _servico("compra")
     geo = _geocodificar(req.endereco)
     try:

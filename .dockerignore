@@ -1,0 +1,17 @@
+# Contexto de build enxuto: nenhuma imagem copia estes diretórios
+# (o docker-compose local monta o código como volume)
+.git
+frontend
+mlruns
+notebooks
+results
+logs
+airflow/logs
+cache
+data/raw/quintoandar
+data/raw/zapimoveis
+data/interim
+infra/terraform/**/.terraform
+**/__pycache__
+**/.env
+*.tfstate*

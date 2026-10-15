@@ -11,6 +11,8 @@ import pandas as pd
 import requests
 import yaml
 
+from src.inferencia import pacote
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
 LIMITE_HORAS = 750
@@ -51,28 +53,13 @@ def _iso(ts) -> str:
 
 # ── Modelos ────────────────────────────────────────────────────────────────────
 def modelos(servico_aluguel, servico_compra) -> list[dict]:
-    from src.models.registro import cliente, versao_champion
+    """Modelos em produção (do MLflow localmente; do pacote de deploy na nuvem)."""
+    def info(chave, nome, meta):
+        return {"chave": chave, "nome": nome, "versao": f"v{meta['versao']}",
+                "treinado_em": meta["treinado_em"], "n_treino": meta["n_treino"], "metricas": meta["metricas"]}
 
-    client = cliente()
-    v = versao_champion("RentPriceModel_SP", client)
-    run = client.get_run(v.run_id)
-    m = run.data.metrics
-    aluguel = {
-        "chave": "aluguel", "nome": "RentPriceModel_SP", "versao": f"v{v.version}",
-        "treinado_em": datetime.fromtimestamp(run.info.start_time / 1000, timezone.utc).isoformat(),
-        "n_treino": int(run.data.params.get("n_train", 0)) or None,
-        "metricas": {"r2": m["r2"], "mae_reais": m.get("mae_reais"), "mape": m.get("mape_reais")},
-    }
-
-    r = servico_compra.run
-    compra = {
-        "chave": "compra", "nome": "RealEstatePriceModel", "versao": "v2",
-        "treinado_em": pd.Timestamp(r["start_time"]).isoformat(),
-        "n_treino": int(r.get("params.n_train") or 0) or None,
-        # O treino do compra só registrou métricas em escala log
-        "metricas": {"r2": float(r["metrics.r2"]), "mae_reais": None, "mape": None},
-    }
-    return [aluguel, compra]
+    return [info("aluguel", "RentPriceModel_SP", servico_aluguel.info()),
+            info("compra", "RealEstatePriceModel", servico_compra.meta)]
 
 
 # ── Monitoramento ──────────────────────────────────────────────────────────────
@@ -144,6 +131,8 @@ def retreinos(conectar) -> list[dict]:
 @lru_cache(maxsize=1)
 def regioes_aluguel() -> list[dict]:
     """R$/m² por região (base limpa do notebook 01), regiões com ≥ 30 anúncios."""
+    if pacote.ativo():  # na nuvem: agregado já calculado (os anúncios não vão para o deploy)
+        return pacote.ler_json("regioes_aluguel.json")
     df = pd.read_parquet(os.path.join(ROOT, "data", "interim", "aluguel_sp_clean.parquet"),
                          columns=["regionName", "lat", "lon", "rent", "rent_m2"])
     g = (df.groupby("regionName")

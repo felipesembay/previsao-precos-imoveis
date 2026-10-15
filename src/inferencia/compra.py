@@ -8,11 +8,11 @@ Mesmo cálculo da tela de compra em lote (streamlit_app/batch_app.py): POIs da t
 import threading
 import time
 
-import mlflow
 import numpy as np
 from sklearn.neighbors import BallTree
 
-from src.models.predict import load_model, predict
+from src.inferencia import pacote
+from src.models.predict import predict
 
 MODEL_NAME = "RealEstatePriceModel"
 EXPERIMENTO = "price_house_ponta_grossa_version2"   # o mesmo de src.models.predict.load_model
@@ -71,13 +71,33 @@ class ServicoCompra:
 
     def __init__(self, conectar):
         self._conectar = conectar          # função que abre conexão (dict_row) com o banco do app
-        self.modelo = load_model()
-        exp = mlflow.get_experiment_by_name(EXPERIMENTO)
-        self.run = mlflow.search_runs([exp.experiment_id], order_by=["start_time DESC"], max_results=1).iloc[0]
-        self.mae_log = float(self.run["metrics.mae"])
+        if pacote.ativo():
+            self.modelo, self.meta = pacote.carregar_modelo("compra")
+        else:
+            self.modelo, self.meta = self._carregar_mlflow()
+        self.mae_log = float(self.meta["mae_log"])
         self._pois = None
         self._pois_em = 0.0
         self._lock = threading.Lock()
+
+    @staticmethod
+    def _carregar_mlflow():
+        import mlflow
+        import pandas as pd
+
+        from src.models.predict import load_model
+
+        exp = mlflow.get_experiment_by_name(EXPERIMENTO)
+        run = mlflow.search_runs([exp.experiment_id], order_by=["start_time DESC"], max_results=1).iloc[0]
+        meta = {
+            "versao": "2",
+            "mae_log": float(run["metrics.mae"]),
+            "treinado_em": pd.Timestamp(run["start_time"]).isoformat(),
+            "n_treino": int(run.get("params.n_train") or 0) or None,
+            # O treino do compra só registrou métricas em escala log
+            "metricas": {"r2": float(run["metrics.r2"]), "mae_reais": None, "mape": None},
+        }
+        return load_model(), meta
 
     def pois(self) -> dict:
         with self._lock:

@@ -1,0 +1,20 @@
+# Só o necessário para servir a API (sem MLflow, Streamlit, Evidently).
+# Versões iguais às do treino: o modelo serializado precisa das mesmas bibliotecas.
+numpy==1.26.3
+pandas==2.3.3
+pyarrow==21.0.0
+scipy==1.16.3
+scikit-learn==1.8.0
+xgboost==3.2.0
+joblib==1.5.3
+geopandas==1.1.2
+shapely==2.1.2
+pyproj==3.7.2
+fastapi==0.121.1
+uvicorn==0.40.0
+python-multipart==0.0.20
+pydantic==2.12.4
+requests==2.32.5
+python-dotenv==1.2.1
+PyYAML==6.0.3
+psycopg[binary]==3.3.6

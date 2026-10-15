@@ -23,8 +23,6 @@ _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-import mlflow
-import mlflow.sklearn
 import numpy as np
 import pandas as pd
 
@@ -48,6 +46,9 @@ def load_model(
       2. run_id      — carrega de um run específico
       3. Busca automática pelo último run do experiment
     """
+
+    import mlflow  # só aqui: a API na nuvem carrega o modelo do pacote, sem MLflow
+    import mlflow.sklearn
 
     if model_path:
         return mlflow.sklearn.load_model(model_path)
@@ -147,6 +148,8 @@ def main():
     # Tracking URI absoluto — mlruns/ sempre na raiz do projeto
     _project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     _mlruns_dir = os.path.join(_project_root, "mlruns")
+    import mlflow
+
     mlflow.set_tracking_uri(f"file:{_mlruns_dir}")
 
     print("🔄 Carregando modelo do MLflow...")

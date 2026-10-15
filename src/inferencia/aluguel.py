@@ -11,13 +11,12 @@ import threading
 import time
 import unicodedata
 
-import mlflow.sklearn
 import numpy as np
 import pandas as pd
 
 from src.features.aluguel import (CAT_FEATURES, CRS_GEO, CRS_M, NUM_FEATURES,
                                   carregar_pois_sp, dentro_de_sp, montar_entrada_modelo)
-from src.models.registro import cliente, versao_champion
+from src.inferencia import pacote
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MODEL_NAME = "RentPriceModel_SP"
@@ -115,7 +114,8 @@ class ServicoAluguel:
 
     def __init__(self):
         self.pois = carregar_pois_sp(OSM_DIR)
-        self.custo = pd.read_parquet(CUSTO_PATH) if os.path.exists(CUSTO_PATH) else None
+        custo = os.path.join(pacote.PACOTE_DIR, os.path.basename(CUSTO_PATH)) if pacote.ativo() else CUSTO_PATH
+        self.custo = pd.read_parquet(custo) if os.path.exists(custo) else None
         # Ponto representativo de cada POI em lat/lon, para desenhar no mapa
         self.pontos = {
             cat: g.geometry.representative_point().to_crs(CRS_GEO)
@@ -125,22 +125,53 @@ class ServicoAluguel:
         self._versao = None
         self._modelo = None
         self._mae_log = None
-        self._metricas = {}
+        self._info = {}
         self._checado_em = 0.0
 
+    def _carregar_pacote(self):
+        self._modelo, meta = pacote.carregar_modelo("aluguel")
+        self._versao, self._mae_log, self._info = meta["versao"], meta["mae_log"], meta
+
+    def _carregar_mlflow(self):
+        import mlflow.sklearn
+        from datetime import datetime, timezone
+
+        from src.models.registro import cliente, versao_champion
+
+        client = cliente()
+        v = versao_champion(MODEL_NAME, client)
+        if v.version == self._versao:
+            return
+        run = client.get_run(v.run_id)
+        m = run.data.metrics
+        self._modelo = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/{v.version}")
+        self._versao, self._mae_log = v.version, m["mae"]
+        self._info = {
+            "versao": v.version,
+            "mae_log": m["mae"],
+            "treinado_em": datetime.fromtimestamp(run.info.start_time / 1000, timezone.utc).isoformat(),
+            "n_treino": int(run.data.params.get("n_train", 0)) or None,
+            "metricas": {"r2": m["r2"], "mae_reais": m.get("mae_reais"), "mape": m.get("mape_reais")},
+        }
+
     def modelo(self):
-        """(modelo, versão, MAE em log, métricas) do @champion, conferido a cada minuto."""
+        """
+        (modelo, versão, MAE em log) do @champion. No modo pacote (nuvem) é fixo; com MLflow
+        é conferido a cada minuto, então um retreino promovido entra sem reiniciar a API.
+        """
         with self._lock:
-            if time.time() - self._checado_em > INTERVALO_CHAMPION_S:
-                client = cliente()
-                v = versao_champion(MODEL_NAME, client)
-                if v.version != self._versao:
-                    self._modelo = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/{v.version}")
-                    self._metricas = client.get_run(v.run_id).data.metrics
-                    self._mae_log = self._metricas["mae"]
-                    self._versao = v.version
+            if pacote.ativo():
+                if self._modelo is None:
+                    self._carregar_pacote()
+            elif time.time() - self._checado_em > INTERVALO_CHAMPION_S:
+                self._carregar_mlflow()
                 self._checado_em = time.time()
-            return self._modelo, self._versao, self._mae_log, self._metricas
+            return self._modelo, self._versao, self._mae_log
+
+    def info(self) -> dict:
+        """Versão, data de treino, tamanho do treino e métricas do modelo em produção."""
+        self.modelo()
+        return self._info
 
     def pois_proximos(self, lat: float, lon: float) -> list[dict]:
         """Até 3 POIs por categoria num raio de 1,5 km (sempre ao menos o mais próximo)."""
@@ -188,7 +219,7 @@ class ServicoAluguel:
             "inst_academia": int(req["academia"]),
             "am_varanda": int(req["varanda"]),
         }
-        modelo, versao, mae_log, _ = self.modelo()
+        modelo, versao, mae_log = self.modelo()
         entrada = montar_entrada_modelo(geo["lat"], geo["lon"], imovel, self.pois)
         estimado = float(prever_aluguel(modelo, entrada)[0])
         faixa = {"min": round(estimado * np.exp(-mae_log), 2), "max": round(estimado * np.exp(mae_log), 2)}

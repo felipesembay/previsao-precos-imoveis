@@ -1,0 +1,46 @@
+# Render Blueprint — API pública da plataforma (plano gratuito).
+# Os modelos vêm de deploy/api/pacote (scripts/empacotar_api.py); o banco é o Azure PostgreSQL.
+# Segredos (sync: false) são preenchidos no painel do Render, nunca no repositório.
+services:
+  - type: web
+    name: preco-justo-api
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./deploy/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - api/**
+        - src/**
+        - deploy/api/**
+        - data/raw/osm/**
+        - streamlit_app/db.py
+        - streamlit_app/config.py
+    envVars:
+      - key: BANCO_APP
+        value: azure
+      - key: AZURE_PG_DB
+        value: imoveis
+      - key: AZURE_PG_HOST
+        sync: false
+      - key: AZURE_PG_USER
+        sync: false
+      - key: AZURE_PG_PASSWORD
+        sync: false
+      - key: AZURE_PG_CRIADO_EM
+        value: "2026-10-15T04:52:22Z"
+      - key: GEOCODING_MAPS
+        sync: false
+      # Domínio do frontend na Vercel (além dos padrões *.lovable.app e localhost)
+      - key: CORS_ORIGINS
+        sync: false
+      # Proteção de custo da chave do Google (API pública)
+      - key: LIMITE_GEOCODING_DIA
+        value: "300"
+      - key: LIMITE_PREVISOES_MINUTO
+        value: "15"
+      - key: MAX_LINHAS_LOTE
+        value: "50"
