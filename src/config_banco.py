@@ -18,16 +18,24 @@ _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv(os.path.join(_ROOT, "streamlit_app", ".env"))
 
 
+def _env(nome: str, padrao: str | None = None) -> str:
+    """Variável de ambiente sem aspas/espaços nas pontas (valores copiados do .env para um painel)."""
+    valor = os.getenv(nome, padrao)
+    if valor is None:
+        raise KeyError(nome)
+    return valor.strip().strip("\"'").strip()
+
+
 def config_banco(banco: str | None = None) -> dict:
     """Parâmetros do psycopg.connect para o banco escolhido (padrão: BANCO_APP)."""
     banco = (banco or os.getenv("BANCO_APP", "local")).strip().lower()
     if banco == "azure":
         return {
-            "host": os.environ["AZURE_PG_HOST"],
+            "host": _env("AZURE_PG_HOST"),
             "port": 5432,
-            "user": os.environ["AZURE_PG_USER"],
-            "password": os.environ["AZURE_PG_PASSWORD"],
-            "dbname": os.getenv("AZURE_PG_DB", "imoveis"),
+            "user": _env("AZURE_PG_USER"),
+            "password": _env("AZURE_PG_PASSWORD"),
+            "dbname": _env("AZURE_PG_DB", "imoveis"),
             "sslmode": "require",
             "connect_timeout": 10,
         }

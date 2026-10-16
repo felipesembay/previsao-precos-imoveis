@@ -36,7 +36,8 @@ def _registrar_chamada():
 @lru_cache(maxsize=2048)
 def geocode(endereco: str) -> dict | None:
     """lat, lon, endereço formatado, bairro, cidade e UF; None se não encontrar."""
-    chave = os.getenv("GEOCODING_MAPS")
+    # Tolera a chave colada com aspas/espaços no painel do provedor (erro comum ao copiar do .env)
+    chave = (os.getenv("GEOCODING_MAPS") or "").strip().strip("\"'").strip()
     if not chave:
         raise RuntimeError("GEOCODING_MAPS não configurada no .env")
     _registrar_chamada()
