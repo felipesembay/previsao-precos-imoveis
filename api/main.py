@@ -56,10 +56,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [API] %(levelname)s 
 MAX_LINHAS_LOTE = int(os.getenv("MAX_LINHAS_LOTE", "200"))  # cada linha = uma chamada paga de geocoding
 THREADS_GEOCODING = 8
 
-# Origens do frontend: Lovable (preview e publicado) e localhost; CORS_ORIGINS acrescenta outras
+# Origens do frontend: Vercel, Lovable e localhost; CORS_ORIGINS acrescenta outras
 CORS_REGEX = os.getenv(
     "CORS_ORIGIN_REGEX",
-    r"https://([a-z0-9-]+\.)*(lovable\.app|lovableproject\.com|lovable\.dev)|http://(localhost|127\.0\.0\.1)(:\d+)?",
+    r"https://([a-z0-9-]+\.)*(lovable\.app|lovableproject\.com|lovable\.dev)"
+    r"|https://previsao-precos-imoveis(-[a-z0-9-]+)?\.vercel\.app"  # produção e previews da Vercel
+    r"|http://(localhost|127\.0\.0\.1)(:\d+)?",
 )
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
