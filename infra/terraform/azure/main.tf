@@ -74,6 +74,15 @@ resource "azurerm_postgresql_flexible_server_database" "imoveis" {
   collation = "en_US.utf8"
 }
 
+# Serviços na nuvem (API no Render): faixas compartilhadas da região, em CIDR
+resource "azurerm_postgresql_flexible_server_firewall_rule" "faixas" {
+  for_each         = toset(var.faixas_liberadas)
+  name             = "faixa-${replace(replace(each.value, ".", "-"), "/", "_")}"
+  server_id        = azurerm_postgresql_flexible_server.imoveis.id
+  start_ip_address = cidrhost(each.value, 0)
+  end_ip_address   = cidrhost(each.value, -1)
+}
+
 resource "azurerm_postgresql_flexible_server_firewall_rule" "liberados" {
   for_each         = toset(var.ips_liberados)
   name             = "ip-${replace(each.value, ".", "-")}"

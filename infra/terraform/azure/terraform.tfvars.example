@@ -1,3 +1,4 @@
 # Copie para terraform.tfvars (fora do git) e preencha.
 ips_liberados = ["177.0.0.1"] # curl -4 ifconfig.me
 email_alertas = "voce@exemplo.com"
+faixas_liberadas = []        # IPs de saída do Render (Connect → Outbound), ex.: ["216.24.60.0/24"]

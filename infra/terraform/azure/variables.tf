@@ -15,6 +15,12 @@ variable "ips_liberados" {
   type        = list(string)
 }
 
+variable "faixas_liberadas" {
+  description = "Faixas IPv4 em CIDR que podem conectar no Postgres (ex.: IPs de saída do Render, em Connect → Outbound)."
+  type        = list(string)
+  default     = []
+}
+
 variable "email_alertas" {
   description = "E-mail que recebe o alerta de orçamento."
   type        = string
