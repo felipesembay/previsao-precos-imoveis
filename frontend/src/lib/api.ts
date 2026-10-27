@@ -46,6 +46,7 @@ export interface CompraRequest {
   sobrado?: boolean;
   preco_anunciado?: number | undefined;
 }
+export interface CidadeAtendida { cidade: string; uf: string }
 export interface CompraResponse {
   preco_estimado: number;
   faixa: { min: number; max: number };
@@ -176,6 +177,10 @@ export const api = {
     USE_MOCKS ? delay(() => mock.preverAluguel(r)) : post<AluguelResponse>("/aluguel/prever", r).then(adaptar.aluguel),
   preverCompra: (r: CompraRequest) =>
     USE_MOCKS ? delay(() => mock.preverCompra(r)) : post<CompraResponse>("/compra/prever", r),
+  cidadesCompra: () =>
+    USE_MOCKS
+      ? delay(() => ({ cidades: [{ cidade: "Ponta Grossa", uf: "PR" }] }), 200)
+      : http<{ cidades: CidadeAtendida[] }>("/compra/cidades"),
   preverLote: async (arquivo: File): Promise<LoteResponse> => {
     if (USE_MOCKS) {
       const text = await arquivo.text();

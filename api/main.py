@@ -1,5 +1,5 @@
 """
-API REST da plataforma de previsão de preços de imóveis (aluguel SP + compra Ponta Grossa).
+API REST da plataforma de previsão de preços de imóveis (aluguel SP + compra nas cidades com POIs).
 
 Uso:
     uvicorn api.main:app --reload --port 8009        (no Docker: serviço `api`)
@@ -8,7 +8,8 @@ Uso:
 Endpoints do frontend:
     POST /aluguel/prever            endereço + imóvel → aluguel, faixa, custo total, POIs próximos
     POST /aluguel/prever-lote       CSV (campo "arquivo") → uma previsão por linha
-    POST /compra/prever             endereço + imóvel → preço de venda (Ponta Grossa)
+    POST /compra/prever             endereço + imóvel → preço de venda (cidades com POIs)
+    GET  /compra/cidades            cidades onde dá para prever venda
     GET  /modelos                   modelos em produção e métricas
     GET  /monitoramento/{modelo}    MAPE ao longo do tempo, drift por feature, alertas ativos
     GET  /retreinos                 histórico champion × challenger
@@ -93,7 +94,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="API — Previsão de Preços de Imóveis",
-    description="Aluguel em São Paulo e venda em Ponta Grossa/PR: previsão, monitoramento e mercado.",
+    description="Aluguel em São Paulo e venda nas cidades com POIs cadastrados: previsão, monitoramento e mercado.",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -196,6 +197,12 @@ async def prever_aluguel_lote(request: Request, tarefas: BackgroundTasks, arquiv
 
     with ThreadPoolExecutor(THREADS_GEOCODING) as pool:
         return {"linhas": list(pool.map(processar, linhas))}
+
+
+@app.get("/compra/cidades", tags=["previsão"])
+def cidades_compra():
+    """Cidades com POIs cadastrados (tabela `pois`), onde o modelo de venda pode prever."""
+    return {"cidades": _servico("compra").cidades()}
 
 
 @app.post("/compra/prever", response_model=E.CompraResponse, tags=["previsão"])

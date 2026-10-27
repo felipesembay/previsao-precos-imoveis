@@ -111,7 +111,7 @@ function Modelos() {
 }
 
 function CardModelo({ m }: { m: Modelo }) {
-  const titulo = m.chave === "aluguel" ? "Aluguel · São Paulo" : "Venda · Ponta Grossa";
+  const titulo = m.chave === "aluguel" ? "Aluguel · São Paulo" : "Venda";
   return (
     <Card className="p-5">
       <div className="flex items-start justify-between gap-3">

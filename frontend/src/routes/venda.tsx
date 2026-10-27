@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -21,10 +21,10 @@ const TIPOS: { v: TipoCompra; l: string }[] = [
 export const Route = createFileRoute("/venda")({
   head: () => ({
     meta: [
-      { title: "Estimador de venda em Ponta Grossa (PR) — Preço Justo" },
-      { name: "description", content: "Segundo modelo do projeto: preço de venda de imóveis em Ponta Grossa - PR." },
-      { property: "og:title", content: "Estimador de venda em Ponta Grossa — Preço Justo" },
-      { property: "og:description", content: "Preço de venda estimado por ML para Ponta Grossa - PR." },
+      { title: "Estimador de venda — Preço Justo" },
+      { name: "description", content: "Segundo modelo do projeto: preço de venda de imóveis nas cidades atendidas." },
+      { property: "og:title", content: "Estimador de venda — Preço Justo" },
+      { property: "og:description", content: "Preço de venda estimado por ML." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -39,6 +39,8 @@ function Venda() {
   const [anunciado, setAnunciado] = useState("");
   const set = <K extends keyof CompraRequest>(k: K) => (v: CompraRequest[K]) => setF((s) => ({ ...s, [k]: v }));
   const m = useMutation({ mutationFn: api.preverCompra });
+  const cidades = useQuery({ queryKey: ["compra", "cidades"], queryFn: api.cidadesCompra });
+  const lista = cidades.data?.cidades ?? [];
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const a = Number(anunciado.replace(/\D/g, ""));
@@ -48,16 +50,28 @@ function Venda() {
   const r = m.data;
   return (
     <>
-      <PageHeader eyebrow="Ponta Grossa - PR · modelo de venda" title="Estimador de preço de venda">
-        Este é um segundo modelo, independente do de aluguel: foi treinado com anúncios de venda de outra cidade, Ponta Grossa, no Paraná.
+      <PageHeader eyebrow="Modelo de venda" title="Estimador de preço de venda">
+        Este é um segundo modelo, independente do de aluguel: foi treinado com anúncios de venda e funciona em qualquer cidade com pontos de interesse cadastrados.
       </PageHeader>
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
         <Card className="h-fit p-5 lg:sticky lg:top-20">
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="endereco" className="text-xs text-muted-foreground">Endereço em Ponta Grossa</Label>
+              <Label htmlFor="endereco" className="text-xs text-muted-foreground">Endereço</Label>
               <Input id="endereco" required value={f.endereco} onChange={(e) => set("endereco")(e.target.value)} />
             </div>
+            {lista.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground">Cidades atendidas</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {lista.map((c) => (
+                    <span key={`${c.cidade}-${c.uf}`} className="rounded-full bg-primary-soft px-2.5 py-1 text-xs font-medium text-primary">
+                      {c.cidade}/{c.uf}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <NumField id="area" label="Área" suffix="m²" min={10} value={f.area} onChange={set("area")} />
               <NumField id="quartos" label="Quartos" value={f.quartos} onChange={set("quartos")} />

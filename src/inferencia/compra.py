@@ -1,5 +1,5 @@
 """
-Inferência do modelo de compra (Ponta Grossa – PR) fora do Streamlit.
+Inferência do modelo de compra (cidades com POIs na tabela `pois`) fora do Streamlit.
 
 Mesmo cálculo da tela de compra em lote (streamlit_app/batch_app.py): POIs da tabela
 `pois` do banco → distâncias e contagens (BallTree haversine) → scores → modelo.
@@ -7,6 +7,7 @@ Mesmo cálculo da tela de compra em lote (streamlit_app/batch_app.py): POIs da t
 
 import threading
 import time
+import unicodedata
 
 import numpy as np
 from sklearn.neighbors import BallTree
@@ -17,7 +18,6 @@ from src.models.predict import predict
 MODEL_NAME = "RealEstatePriceModel"
 EXPERIMENTO = "price_house_ponta_grossa_version2"   # o mesmo de src.models.predict.load_model
 VERSAO = "2.0.0"           # rótulo gravado em `predicoes` pelas telas de compra
-CIDADE, UF = "Ponta Grossa", "PR"
 TIPOS = ["casa", "apartamento", "comercial"]
 RAIO_TERRA_M = 6_371_000
 
@@ -29,6 +29,12 @@ CATEGORIAS_MAPA = {"escola": "escola", "hospital": "hospital", "farmacia": "farm
 RAIO_MAPA_M = 1500
 POR_CATEGORIA = 3
 RECARGA_POIS_S = 3600
+
+
+def _norm(texto) -> str:
+    """Minúsculas e sem acentos, para casar nomes de cidade do geocoding com o banco."""
+    sem = unicodedata.normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode()
+    return " ".join(sem.lower().split())
 
 
 def calcular_features_poi(lat: float, lon: float, pois_por_tipo: dict) -> dict:
@@ -67,7 +73,7 @@ def _haversine_m(lat, lon, lats, lons):
 
 
 class ServicoCompra:
-    """Modelo carregado uma vez; POIs de Ponta Grossa lidos do banco e recarregados a cada hora."""
+    """Modelo carregado uma vez; POIs de todas as cidades lidos do banco e recarregados a cada hora."""
 
     def __init__(self, conectar):
         self._conectar = conectar          # função que abre conexão (dict_row) com o banco do app
@@ -76,7 +82,7 @@ class ServicoCompra:
         else:
             self.modelo, self.meta = self._carregar_mlflow()
         self.mae_log = float(self.meta["mae_log"])
-        self._pois = None
+        self._cidades = None
         self._pois_em = 0.0
         self._lock = threading.Lock()
 
@@ -99,26 +105,48 @@ class ServicoCompra:
         }
         return load_model(), meta
 
-    def pois(self) -> dict:
-        with self._lock:
-            if self._pois is None or time.time() - self._pois_em > RECARGA_POIS_S:
-                with self._conectar() as conn:
-                    linhas = conn.execute(
-                        "SELECT tipo_poi, nome, latitude, longitude FROM pois WHERE cidade = %s AND estado = %s",
-                        (CIDADE, UF),
-                    ).fetchall()
-                pois = {t: [] for t in RAIOS_M}
-                for r in linhas:
-                    nome = (r["nome"] or "").strip()
-                    pois[r["tipo_poi"]].append({"nome": None if nome.lower() in ("", "nan", "none") else nome,
-                                                "lat": float(r["latitude"]),
-                                                "lon": float(r["longitude"])})
-                self._pois, self._pois_em = pois, time.time()
-            return self._pois
+    def _recarregar(self):
+        """Lê todas as cidades da tabela `pois` (qualquer cidade cadastrada vira atendida)."""
+        with self._conectar() as conn:
+            linhas = conn.execute(
+                "SELECT cidade, estado, tipo_poi, nome, latitude, longitude FROM pois"
+            ).fetchall()
+        cidades: dict = {}
+        for r in linhas:
+            if r["tipo_poi"] not in RAIOS_M:
+                continue
+            chave = (_norm(r["cidade"]), (r["estado"] or "").strip().upper())
+            c = cidades.setdefault(chave, {"cidade": (r["cidade"] or "").strip(), "uf": chave[1],
+                                           "pois": {t: [] for t in RAIOS_M}})
+            nome = (r["nome"] or "").strip()
+            c["pois"][r["tipo_poi"]].append({"nome": None if nome.lower() in ("", "nan", "none") else nome,
+                                             "lat": float(r["latitude"]), "lon": float(r["longitude"])})
+        self._cidades, self._pois_em = cidades, time.time()
 
-    def pois_proximos(self, lat: float, lon: float) -> list[dict]:
+    def _cidades_atuais(self) -> dict:
+        with self._lock:
+            if self._cidades is None or time.time() - self._pois_em > RECARGA_POIS_S:
+                self._recarregar()
+            return self._cidades
+
+    def cidades(self) -> list[dict]:
+        """Cidades com POIs cadastrados, em ordem alfabética."""
+        return sorted(({"cidade": c["cidade"], "uf": c["uf"]} for c in self._cidades_atuais().values()),
+                      key=lambda d: (d["cidade"], d["uf"]))
+
+    def pois(self, geo: dict) -> dict | None:
+        """POIs da cidade do endereço geocodificado; None se a cidade não está cadastrada."""
+        cidades = self._cidades_atuais()
+        nome, uf = _norm(geo.get("cidade")), (geo.get("uf") or "").strip().upper()
+        c = cidades.get((nome, uf))
+        if c is None:  # UF ausente/divergente no geocoding: aceita se o nome for único
+            candidatas = [v for (n, _), v in cidades.items() if n == nome]
+            c = candidatas[0] if len(candidatas) == 1 else None
+        return c["pois"] if c else None
+
+    def pois_proximos(self, lat: float, lon: float, pois: dict) -> list[dict]:
         saida = []
-        for tipo, lista in self.pois().items():
+        for tipo, lista in pois.items():
             if not lista:
                 continue
             dist = _haversine_m(lat, lon, [p["lat"] for p in lista], [p["lon"] for p in lista])
@@ -132,10 +160,12 @@ class ServicoCompra:
 
     def prever(self, geo: dict, req: dict) -> tuple[dict, dict]:
         """Devolve (resposta da API, dados para salvar em `predicoes`)."""
-        if (geo.get("cidade") or "").lower() != CIDADE.lower():
-            raise ValueError(f"O modelo de compra cobre só {CIDADE}/{UF}; o endereço caiu em {geo.get('cidade')}.")
+        pois = self.pois(geo)
+        if pois is None:
+            atendidas = ", ".join(f"{c['cidade']}/{c['uf']}" for c in self.cidades())
+            raise ValueError(f"Sem POIs cadastrados para {geo.get('cidade')}. Cidades atendidas: {atendidas}.")
 
-        scores = calcular_scores(calcular_features_poi(geo["lat"], geo["lon"], self.pois()))
+        scores = calcular_scores(calcular_features_poi(geo["lat"], geo["lon"], pois))
         dados = {
             "area_m2": float(req["area"]),
             "endereco": geo["endereco_formatado"],
@@ -154,7 +184,7 @@ class ServicoCompra:
             "faixa": {"min": round(estimado * np.exp(-self.mae_log), 2),
                       "max": round(estimado * np.exp(self.mae_log), 2)},
             "localizacao": {"lat": geo["lat"], "lon": geo["lon"], "endereco_formatado": geo["endereco_formatado"]},
-            "pois_proximos": self.pois_proximos(geo["lat"], geo["lon"]),
+            "pois_proximos": self.pois_proximos(geo["lat"], geo["lon"], pois),
             "modelo": {"nome": MODEL_NAME, "versao": VERSAO},
         }
         return resposta, {"dados": dados, "scores": scores, "preco": estimado}
